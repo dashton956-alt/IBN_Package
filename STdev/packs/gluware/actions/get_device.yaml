@@ -1,0 +1,21 @@
+---
+name: gluware.get_device
+runner_type: python-script
+description: Get device information from Gluware API
+enabled: true
+entry_point: get_device.py
+parameters:
+  serial:
+    type: string
+    required: true
+    description: Device serial or identifier
+  api_url:
+    type: string
+    required: false
+    default: "http://wingpy:8080"
+    description: Optional Gluware API base URL
+  api_key:
+    type: string
+    required: false
+    description: Optional API key for authentication
+    secret: true

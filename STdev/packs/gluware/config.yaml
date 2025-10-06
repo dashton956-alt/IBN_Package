@@ -1,0 +1,13 @@
+---
+gluware_api:
+  description: "Gluware API configuration"
+  type: object
+  properties:
+    url:
+      type: string
+      description: "Gluware API base URL"
+      default: "https://demo.gluware.com"
+    token:
+      type: string
+      description: "Bearer token for Gluware API"
+      secret: true

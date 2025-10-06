@@ -1,0 +1,7 @@
+name: ibn_workflows
+description: IBN local workflows pack (non-gluware)
+version: 0.1.0
+author: IBNaaS Maintainers
+email: admin@ibnaas.local
+python_versions:
+  - "3"

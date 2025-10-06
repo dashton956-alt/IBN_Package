@@ -1,0 +1,24 @@
+name: gluware
+description: Glueware integration pack
+version: 0.1.0
+author: IBNaaS Maintainers
+email: admin@ibnaas.local
+python_versions:
+  - "3"
+actions:
+  - name: get_device
+  - name: configure_port
+  - name: reboot_device
+  - name: network_health_check
+  - name: create_ticket
+  - name: api_call
+  - name: workflows_list
+  - name: workflows_get
+  - name: workflow_execute
+  - name: templates_list
+  - name: templates_sync
+  - name: device_port_poe_get
+  - name: device_port_poe_post
+  - name: devices_get
+  - name: device_reboot
+

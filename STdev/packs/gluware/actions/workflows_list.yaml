@@ -1,0 +1,22 @@
+---
+name: gluware.workflows_list
+runner_type: python-script
+description: List Gluware workflows (GET /api/v1/workflows)
+enabled: true
+entry_point: api_call.py
+parameters:
+  api_url:
+    type: string
+    required: false
+    default: "https://demo.gluware.com"
+  token:
+    type: string
+    required: false
+    secret: true
+  method:
+    type: string
+    default: "GET"
+    required: false
+  path:
+    type: string
+    default: "/api/v1/workflows"

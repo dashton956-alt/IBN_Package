@@ -1,0 +1,24 @@
+---
+name: gluware.devices_get
+runner_type: python-script
+description: Get device details via Gluware /api or WingPy proxy (GET /api/v1/devices/{id} or proxy)
+enabled: true
+entry_point: api_call.py
+parameters:
+  device_id:
+    type: string
+    required: true
+  api_url:
+    type: string
+    required: false
+    default: "https://demo.gluware.com"
+  token:
+    type: string
+    required: false
+    secret: true
+  method:
+    type: string
+    default: "GET"
+  path:
+    type: string
+    default: "/api/v1/devices/{device_id}"

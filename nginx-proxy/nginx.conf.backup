@@ -1,0 +1,171 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Basic settings
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    
+    # SSL Configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    # Upstream servers
+    upstream netbox {
+        server 172.30.133.89:8080;
+    }
+    
+    upstream n8n {
+        server 172.30.133.89:5678;
+    }
+    
+    upstream anythingllm {
+        server 172.30.133.89:3001;
+    }
+    
+    upstream stackstorm {
+        server 172.30.133.89:8000;
+    }
+
+    # HTTPS Server
+    server {
+        listen 443 ssl;
+        server_name 172.30.133.89;
+        
+        # Self-signed SSL (for now)
+        ssl_certificate /etc/nginx/ssl/nginx.crt;
+        ssl_certificate_key /etc/nginx/ssl/nginx.key;
+        
+        # N8N assets (fix for subpath deployment)
+        location ~ ^/(assets|css|js|fonts|img)/ {
+            proxy_pass http://n8n;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        # Netbox location (handles ALL paths including APIs)
+        location /netbox/ {
+            proxy_pass http://netbox/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Remove duplicate X-Forwarded-Host (Netbox fix)
+            proxy_set_header X-Forwarded-Host $host;
+            
+            # API-specific settings
+            proxy_buffering off;
+            proxy_request_buffering off;
+            client_max_body_size 100M;  # For file uploads
+            
+            # Handle redirects properly
+            proxy_redirect ~^http://[^/]+/(.*) https://$host/netbox/$1;
+        }
+        
+        # N8N location (handles ALL paths including APIs, WebSockets, Webhooks)
+        location /n8n/ {
+            proxy_pass http://n8n/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Fix for N8N subpath deployment
+            proxy_set_header X-Forwarded-Prefix /n8n;
+            
+            # WebSocket support for N8N real-time features
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            
+            # API-optimized settings
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+            client_max_body_size 100M;  # For workflow file uploads
+        }
+        
+        # AnythingLLM location (AI/LLM interface)
+        location /llm/ {
+            proxy_pass http://anythingllm/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Fix for AnythingLLM subpath deployment
+            proxy_set_header X-Forwarded-Prefix /llm;
+            
+            # LLM-optimized settings
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_read_timeout 600s;  # Long timeout for LLM processing
+            proxy_send_timeout 600s;
+            client_max_body_size 500M;  # For large document uploads
+        }
+        
+        # StackStorm location (automation/orchestration)
+        location /st2/ {
+            proxy_pass http://stackstorm/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support for StackStorm live updates
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            
+            # API-optimized settings  
+            proxy_buffering off;
+            proxy_request_buffering off;
+            client_max_body_size 100M;
+        }
+        
+        # Root redirect - service selection page
+        location = / {
+            return 200 "🚀 Services Available:\n• Netbox: https://$host/netbox/\n• N8N: https://$host/n8n/\n• AnythingLLM: https://$host/llm/\n• StackStorm: https://$host/st2/\n";
+            add_header Content-Type text/plain;
+        }
+        
+        # API-specific optimizations
+        location ~* \.(json|xml)$ {
+            add_header Cache-Control "no-cache, must-revalidate";
+            expires 0;
+        }
+        
+        # WebSocket connections (for N8N real-time)
+        location /n8n/rest/push {
+            proxy_pass http://n8n/rest/push;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_cache_bypass 1;
+            proxy_no_cache 1;
+        }
+        
+        # Health check
+        location /health {
+            return 200 "✅ NGINX Proxy OK - All Services Ready\n\n🌐 Web Interfaces:\n• Netbox: /netbox/\n• N8N: /n8n/\n• AnythingLLM: /llm/\n• StackStorm: /st2/\n\n🔌 APIs:\n• Netbox API: /netbox/api/\n• N8N REST: /n8n/rest/\n• N8N Webhooks: /n8n/webhook/\n• StackStorm API: /st2/api/\n• AnythingLLM API: /llm/api/\n";
+            add_header Content-Type text/plain;
+        }
+    }
+    
+    # HTTPS only - no HTTP redirect needed
+}

@@ -1,0 +1,24 @@
+---
+name: gluware.device_reboot
+runner_type: python-script
+description: Reboot a device via Gluware API (POST /api/v1/devices/{id}/reboot)
+enabled: true
+entry_point: api_call.py
+parameters:
+  device_id:
+    type: string
+    required: true
+  api_url:
+    type: string
+    required: false
+    default: "https://demo.gluware.com"
+  token:
+    type: string
+    required: false
+    secret: true
+  method:
+    type: string
+    default: "POST"
+  path:
+    type: string
+    default: "/api/v1/devices/{device_id}/reboot"

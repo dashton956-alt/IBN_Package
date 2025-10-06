@@ -1,0 +1,80 @@
+@startuml
+hide stereotype
+skinparam backgroundColor #f7f9fb
+skinparam rectangle {
+  BackgroundColor<<MGMT>> #e8f0ff
+  BackgroundColor<<TELEM>> #fff6e6
+  BackgroundColor<<DATA>> #e8ffe8
+  BackgroundColor<<DMZ>> #ffe8f0
+  Shadowing false
+}
+
+title POC Network Diagram — Zones & Flows
+
+rectangle "DMZ" <<DMZ>> {
+  component "ChatOps \n(Reverse proxy)" as ChatOps
+}
+
+rectangle "MGMT (st2_mgmt)" <<MGMT>> {
+  component "StackStorm (ST2)" as ST2
+  component "NetBox (SOoT)" as NetBox
+  component "Vault (Secrets)" as Vault
+  component "AnythingLLM" as LLM
+  component "CI / GitHub Runner" as CI
+}
+
+rectangle "TELEM (telemetry_net)" <<TELEM>> {
+  component "Fluentbit / Promtail" as Fluent
+  component "Loki" as Loki
+  component "Prometheus" as Prom
+  component "Alertmanager" as AM
+}
+
+rectangle "SANDBOX" {
+  component "Emulators / Testlab" as Sandbox
+}
+
+rectangle "DATA (Physical Devices)" <<DATA>> {
+  component "Meraki / Cloud" as Meraki
+  component "Catalyst / Switches" as Catalyst
+  component "FortiManager" as Forti
+  component "Mist" as Mist
+  component "Gluware VM" as Gluware
+}
+
+' Visual flows
+ChatOps -down-> ST2 : webhook
+ST2 -right-> NetBox : HTTPS (443)
+ST2 -down-> Vault : HTTPS (8200)
+ST2 -down-> Gluware : HTTPS (443)
+
+Meraki -down-> Fluent : syslog
+Catalyst -down-> Fluent : syslog
+Forti -down-> Fluent : syslog
+Fluent -right-> Loki : logs
+Prom -right-> AM : alerts
+AM -up-> ST2 : webhook
+
+' Notes
+note top of ST2
+  ST2 action runners
+  sensors, rules, workflows
+end note
+
+note right of Vault
+  Use AppRole
+  TLS + ACLs
+end note
+
+note left of Fluent
+  Expose UDP 514 on host (or macvlan)
+end note
+
+legend left
+  |= Color | Zone |
+  | #e8f0ff | MGMT |
+  | #fff6e6 | TELEM |
+  | #e8ffe8 | DATA |
+endlegend
+
+@enduml

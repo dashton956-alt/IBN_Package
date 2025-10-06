@@ -1,0 +1,211 @@
+---
+# Configuration schema for IBN workflows pack
+# All sensitive data marked with secret: true will be encrypted by StackStorm
+
+# Cisco Meraki Dashboard API Configuration
+meraki_api:
+  description: "Cisco Meraki Dashboard API configuration"
+  type: "object"
+  properties:
+    api_key:
+      type: "string"
+      description: "Meraki Dashboard API key"
+      secret: true
+      required: true
+    base_url:
+      type: "string"
+      description: "Meraki API base URL"
+      default: "https://api.meraki.com/api/v1"
+    rate_limit:
+      type: "integer"
+      description: "API rate limit per second"
+      default: 5
+    verify_ssl:
+      type: "boolean"
+      description: "Verify SSL certificates"
+      default: true
+    organization_id:
+      type: "string"
+      description: "Default Meraki organization ID"
+
+# Cisco Catalyst Center (DNA Center) API Configuration
+catalyst_center_api:
+  description: "Cisco Catalyst Center API configuration"
+  type: "object"
+  properties:
+    host:
+      type: "string"
+      description: "Catalyst Center hostname or IP"
+      required: true
+    username:
+      type: "string"
+      description: "Catalyst Center username"
+      required: true
+    password:
+      type: "string"
+      description: "Catalyst Center password"
+      secret: true
+      required: true
+    port:
+      type: "integer"
+      description: "Catalyst Center API port"
+      default: 443
+    verify_ssl:
+      type: "boolean"
+      description: "Verify SSL certificates"
+      default: false
+    api_version:
+      type: "string"
+      description: "API version to use"
+      default: "v1"
+
+# Direct Device Access Configuration
+device_credentials:
+  description: "Direct device access credentials"
+  type: "object"
+  properties:
+    ssh_credentials:
+      type: "object"
+      properties:
+        default_username:
+          type: "string"
+          description: "Default SSH username"
+          default: "admin"
+        default_password:
+          type: "string"
+          description: "Default SSH password"
+          secret: true
+        ssh_key_file:
+          type: "string"
+          description: "Path to SSH private key file"
+        ssh_port:
+          type: "integer"
+          description: "Default SSH port"
+          default: 22
+    snmp_credentials:
+      type: "object"
+      properties:
+        community_read:
+          type: "string"
+          description: "SNMP read community string"
+          secret: true
+          default: "public"
+        community_write:
+          type: "string"
+          description: "SNMP write community string"
+          secret: true
+          default: "private"
+        v3_username:
+          type: "string"
+          description: "SNMPv3 username"
+        v3_password:
+          type: "string"
+          description: "SNMPv3 password"
+          secret: true
+        v3_encryption_key:
+          type: "string"
+          description: "SNMPv3 encryption key"
+          secret: true
+    netconf_credentials:
+      type: "object"
+      properties:
+        username:
+          type: "string"
+          description: "NETCONF username"
+          default: "admin"
+        password:
+          type: "string"
+          description: "NETCONF password"
+          secret: true
+        port:
+          type: "integer"
+          description: "NETCONF port"
+          default: 830
+
+netbox_api:
+  description: "NetBox API configuration"
+  type: "object"
+  properties:
+    url:
+      type: "string"
+      description: "NetBox API URL"
+      default: "http://netbox:8000"
+    token:
+      type: "string"
+      description: "NetBox API token"
+      secret: true
+    verify_ssl:
+      type: "boolean"
+      description: "Verify SSL certificates"
+      default: false
+
+gluware_api:
+  description: "Gluware API configuration"
+  type: "object"
+  properties:
+    url:
+      type: "string"
+      description: "Gluware API URL"
+      default: "https://gluware:443"
+    username:
+      type: "string"
+      description: "Gluware username"
+    password:
+      type: "string"
+      description: "Gluware password"
+      secret: true
+    verify_ssl:
+      type: "boolean"
+      description: "Gluware password"
+      default: false
+
+itsm_api:
+  description: "IT Service Management API configuration"
+  type: "object"
+  properties:
+    url:
+      type: "string"
+      description: "ITSM API URL (ServiceNow, JIRA, etc.)"
+    username:
+      type: "string"
+      description: "ITSM username"
+    password:
+      type: "string"
+      description: "ITSM password"
+      secret: true
+    system_type:
+      type: "string"
+      description: "ITSM system type"
+      enum: ["servicenow", "jira", "remedy"]
+      default: "servicenow"
+
+monitoring:
+  description: "Monitoring system configuration"
+  type: "object"
+  properties:
+    enabled:
+      type: "boolean"
+      description: "Enable monitoring integrations"
+      default: true
+    snmp_community:
+      type: "string"
+      description: "SNMP community string"
+      secret: true
+      default: "public"
+
+notification:
+  description: "Notification configuration"
+  type: "object"
+  properties:
+    email_enabled:
+      type: "boolean"
+      description: "Enable email notifications"
+      default: true
+    slack_enabled:
+      type: "boolean"
+      description: "Enable Slack notifications"
+      default: false
+    teams_enabled:
+      type: "boolean"
+      description: "Enable Teams notifications"
+      default: false

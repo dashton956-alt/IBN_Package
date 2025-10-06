@@ -1,0 +1,5 @@
+name: "vault"
+version: "0.1.0"
+description: "POC helper pack to fetch secrets from HashiCorp Vault"
+author: "IBNaaS Maintainers"
+entry_point: ""
