@@ -33,6 +33,32 @@
       "parameters": {
         "conditions": {
           "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "check-branch",
+              "leftValue": "={{ $json.branch }}",
+              "rightValue": "Merge/Workflows",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-branch",
+      "name": "Is Merge/Workflows Branch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
             "caseSensitive": true,
             "leftValue": "",
             "typeValidation": "strict"
@@ -55,7 +81,7 @@
       "name": "Has Workflow Changes?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -70,7 +96,7 @@
       "name": "Get Workflow File",
       "type": "n8n-nodes-base.github",
       "typeVersion": 1,
-      "position": [900, 200],
+      "position": [1120, 200],
       "credentials": {
         "githubOAuth2Api": {
           "id": "YOUR_GITHUB_OAUTH_ID",
@@ -86,7 +112,7 @@
       "name": "Extract Workflow Files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -115,7 +141,7 @@
       "name": "Import to n8n",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1120, 200]
+      "position": [1340, 200]
     },
     {
       "parameters": {
@@ -130,7 +156,7 @@
       "name": "Post Success Comment",
       "type": "n8n-nodes-base.github",
       "typeVersion": 1,
-      "position": [1340, 200],
+      "position": [1560, 200],
       "credentials": {
         "githubApi": {
           "id": "YOUR_GITHUB_API_ID",
@@ -146,7 +172,17 @@
       "name": "No Workflow Changes",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [900, 400]
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "wrong-branch",
+      "name": "Wrong Branch - Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [680, 500]
     }
   ],
   "connections": {
@@ -165,7 +201,25 @@
       "main": [
         [
           {
+            "node": "Is Merge/Workflows Branch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Merge/Workflows Branch?": {
+      "main": [
+        [
+          {
             "node": "Has Workflow Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wrong Branch - Skip",
             "type": "main",
             "index": 0
           }
