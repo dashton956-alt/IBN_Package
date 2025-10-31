@@ -1,0 +1,297 @@
+name: Sync Workflows to n8n
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'workflows/**/*.json'
+      - 'N8N_workflows/**/*.json'
+  
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode (no actual import)'
+        required: false
+        type: boolean
+        default: false
+      workflow_path:
+        description: 'Path to workflow files'
+        required: false
+        type: string
+        default: 'workflows'
+
+env:
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+  N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+  N8N_BASE_URL: ${{ secrets.N8N_BASE_URL }}
+
+jobs:
+  sync-workflows:
+    name: Sync n8n Workflows
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            workflows/**/*.json
+            N8N_workflows/**/*.json
+      
+      - name: Display changed workflow files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Changed workflow files:"
+          echo "${{ steps.changed-files.outputs.all_changed_files }}"
+      
+      - name: Prepare webhook payload
+        id: payload
+        run: |
+          cat > payload.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "actor": "${{ github.actor }}",
+            "workflow_path": "${{ github.event.inputs.workflow_path || 'workflows' }}",
+            "dry_run": ${{ github.event.inputs.dry_run || false }},
+            "n8n_api_key": "${{ secrets.N8N_API_KEY }}",
+            "github_token": "${{ secrets.GITHUB_TOKEN }}",
+            "n8n_base_url": "${{ secrets.N8N_BASE_URL }}",
+            "changed_files": "${{ steps.changed-files.outputs.all_changed_files }}",
+            "trigger": {
+              "event": "${{ github.event_name }}",
+              "run_id": "${{ github.run_id }}",
+              "run_number": "${{ github.run_number }}",
+              "workflow": "${{ github.workflow }}",
+              "triggered_at": "${{ github.event.head_commit.timestamp }}"
+            }
+          }
+          EOF
+          
+          echo "Payload prepared:"
+          cat payload.json | jq '.'
+      
+      - name: Trigger n8n workflow sync
+        id: sync
+        run: |
+          response=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @payload.json \
+            "${{ secrets.N8N_WEBHOOK_URL }}/webhook/github-workflow-sync" \
+            -w "\n%{http_code}" \
+            -o response.json \
+            --max-time 300)
+          
+          http_code=$(echo "$response" | tail -n1)
+          
+          echo "HTTP Status: $http_code"
+          echo "Response:"
+          cat response.json | jq '.' || cat response.json
+          
+          echo "http_code=$http_code" >> $GITHUB_OUTPUT
+          
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Sync successful"
+            exit 0
+          else
+            echo "❌ Sync failed with HTTP $http_code"
+            exit 1
+          fi
+      
+      - name: Upload sync response
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-response
+          path: response.json
+          retention-days: 30
+      
+      - name: Parse sync results
+        if: success()
+        id: results
+        run: |
+          total=$(jq -r '.summary.total // 0' response.json)
+          successful=$(jq -r '.summary.successful // 0' response.json)
+          failed=$(jq -r '.summary.failed // 0' response.json)
+          
+          echo "total=$total" >> $GITHUB_OUTPUT
+          echo "successful=$successful" >> $GITHUB_OUTPUT
+          echo "failed=$failed" >> $GITHUB_OUTPUT
+          
+          echo "### 🔄 Workflow Sync Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total workflows:** $total" >> $GITHUB_STEP_SUMMARY
+          echo "**✅ Successful:** $successful" >> $GITHUB_STEP_SUMMARY
+          echo "**❌ Failed:** $failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$failed" -gt 0 ]; then
+            echo "#### Failed Workflows" >> $GITHUB_STEP_SUMMARY
+            jq -r '.failed_workflows[] | "- `\(.file)`: \(.error)"' response.json >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Successful Workflows" >> $GITHUB_STEP_SUMMARY
+          jq -r '.successful_workflows[] | "- ✓ `\(.file)` → \(.workflow_name) (ID: \(.n8n_id))"' response.json >> $GITHUB_STEP_SUMMARY
+      
+      - name: Comment on commit
+        if: success() && github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const response = JSON.parse(fs.readFileSync('response.json', 'utf8'));
+            
+            const successfulWorkflows = response.successful_workflows || [];
+            const failedWorkflows = response.failed_workflows || [];
+            
+            const comment = `## 🔄 n8n Workflow Sync Complete
+            
+            **Status:** ${failedWorkflows.length === 0 ? '✅ All workflows synced successfully' : '⚠️ Some workflows failed'}
+            
+            **Summary:**
+            - Total: ${response.summary?.total || 0}
+            - Successful: ${response.summary?.successful || 0}
+            - Failed: ${response.summary?.failed || 0}
+            
+            ${successfulWorkflows.length > 0 ? `### ✅ Successfully Synced\n${successfulWorkflows.map(w => `- \`${w.file}\` → **${w.workflow_name}** (${w.action})`).join('\n')}` : ''}
+            
+            ${failedWorkflows.length > 0 ? `### ❌ Failed\n${failedWorkflows.map(w => `- \`${w.file}\`: ${w.error}`).join('\n')}` : ''}
+            
+            **Statistics:**
+            - Total nodes: ${response.statistics?.total_nodes || 0}
+            - Created: ${response.statistics?.actions?.created || 0}
+            - Updated: ${response.statistics?.actions?.updated || 0}
+            ${response.statistics?.unique_tags?.length > 0 ? `- Tags: ${response.statistics.unique_tags.join(', ')}` : ''}
+            
+            <details>
+            <summary>View full report</summary>
+            
+            \`\`\`json
+            ${JSON.stringify(response, null, 2)}
+            \`\`\`
+            </details>
+            
+            ---
+            *Synced from: \`${context.sha.substring(0, 7)}\` | Workflow Run: [#${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*
+            `;
+            
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: comment
+            });
+      
+      - name: Create issue on failure
+        if: failure() && github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let response = {};
+            try {
+              response = JSON.parse(fs.readFileSync('response.json', 'utf8'));
+            } catch (e) {
+              response = { error: 'Failed to parse response' };
+            }
+            
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `❌ n8n Workflow Sync Failed - ${new Date().toISOString().split('T')[0]}`,
+              body: `## Workflow Sync Failure
+              
+              **Commit:** ${context.sha}
+              **Actor:** @${context.actor}
+              **Workflow Run:** [#${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              
+              **Error Details:**
+              \`\`\`json
+              ${JSON.stringify(response, null, 2)}
+              \`\`\`
+              
+              **Affected Files:**
+              ${context.payload.commits?.[0]?.modified?.join('\n') || 'Unknown'}
+              
+              Please review and fix the issues, then re-run the workflow.
+              `,
+              labels: ['automation', 'n8n', 'sync-failure']
+            });
+            
+            console.log(`Created issue #${issue.data.number}`);
+      
+      - name: Send notification
+        if: always()
+        run: |
+          status="${{ job.status }}"
+          if [ "$status" == "success" ]; then
+            emoji="✅"
+            color="good"
+          else
+            emoji="❌"
+            color="danger"
+          fi
+          
+          echo "$emoji Workflow sync $status"
+          
+          # Add your notification logic here (Slack, Discord, email, etc.)
+          # Example:
+          # curl -X POST $SLACK_WEBHOOK_URL \
+          #   -H 'Content-Type: application/json' \
+          #   -d "{\"text\": \"$emoji n8n Sync $status\"}"
+
+  # Optional: Validate workflow files before sync
+  validate:
+    name: Validate Workflow Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Validate JSON syntax
+        run: |
+          echo "Validating workflow JSON files..."
+          find workflows -name "*.json" -type f 2>/dev/null | while read file; do
+            echo "Validating: $file"
+            if python -m json.tool "$file" > /dev/null 2>&1; then
+              echo "  ✓ Valid JSON"
+            else
+              echo "  ✗ Invalid JSON"
+              exit 1
+            fi
+          done
+      
+      - name: Check workflow structure
+        run: |
+          echo "Checking n8n workflow structure..."
+          find workflows -name "*.json" -type f 2>/dev/null | while read file; do
+            echo "Checking: $file"
+            
+            # Check for required fields
+            if ! grep -q '"name"' "$file"; then
+              echo "  ✗ Missing 'name' field"
+              exit 1
+            fi
+            
+            if ! grep -q '"nodes"' "$file"; then
+              echo "  ✗ Missing 'nodes' field"
+              exit 1
+            fi
+            
+            echo "  ✓ Structure looks good"
+          done
