@@ -1,0 +1,67 @@
+name: Sync Workflows to n8n
+
+on:
+  push:
+    branches:
+      - 'Merge/Workflows'
+    paths:
+      - 'n8n/workflows/**/*.json'
+  
+  workflow_dispatch:
+
+env:
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+
+jobs:
+  sync-workflows:
+    name: Sync n8n Workflows
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Get changed workflow files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            n8n/workflows/**/*.json
+      
+      - name: Display changed workflows
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Changed workflow files:"
+          echo "${{ steps.changed-files.outputs.all_changed_files }}"
+      
+      - name: Sync workflows to n8n
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "Syncing: $file"
+            
+            workflow_content=$(cat "$file" | jq -c .)
+            filename=$(basename "$file")
+            
+            response=$(curl -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"workflow_content\": $workflow_content, \"filename\": \"$filename\", \"repository\": \"${{ github.repository }}\", \"branch\": \"${{ github.ref_name }}\", \"commit_sha\": \"${{ github.sha }}\", \"pusher\": \"${{ github.actor }}\"}" \
+              -w "\nHTTP_STATUS:%{http_code}" \
+              "${{ env.N8N_WEBHOOK_URL }}")
+            
+            http_code=$(echo "$response" | grep "HTTP_STATUS" | cut -d: -f2)
+            
+            if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+              echo "✅ Successfully synced: $filename"
+            else
+              echo "❌ Failed to sync: $filename (HTTP $http_code)"
+              exit 1
+            fi
+          done
+      
+      - name: No workflows changed
+        if: steps.changed-files.outputs.any_changed != 'true'
+        run: |
+          echo "ℹ️ No workflow files were changed in this push"
