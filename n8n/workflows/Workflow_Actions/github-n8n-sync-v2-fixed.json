@@ -1,0 +1,236 @@
+{
+  "name": "GitHub → n8n Workflow Sync (v2 - Fixed)",
+  "nodes": [
+    {
+      "parameters": {
+        "events": ["push"],
+        "authentication": "oAuth2"
+      },
+      "id": "github-trigger",
+      "name": "GitHub Push Trigger",
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "github-workflow-sync-v2",
+      "credentials": {
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.item.json;\nconst pushData = {\n  repository: payload.repository.full_name,\n  owner: payload.repository.owner.login,\n  repo: payload.repository.name,\n  ref: payload.ref,\n  branch: payload.ref.replace('refs/heads/', ''),\n  before_sha: payload.before,\n  after_sha: payload.after,\n  commits: payload.commits || [],\n  pusher: payload.pusher.name,\n  has_workflow_changes: payload.commits.some(commit => {\n    const files = [...(commit.added || []), ...(commit.modified || [])];\n    return files.some(file => file.endsWith('.json') && file.includes('workflow'));\n  }),\n  triggered_at: new Date().toISOString(),\n  execution_id: $execution.id\n};\nreturn { json: pushData };"
+      },
+      "id": "parse-push-event",
+      "name": "Parse Push Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-workflows",
+              "leftValue": "={{ $json.has_workflow_changes }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-workflow-changes",
+      "name": "Has Workflow Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo }}",
+        "filePath": "={{ $json.workflow_file }}",
+        "reference": "={{ $json.after_sha }}"
+      },
+      "id": "get-workflow-file",
+      "name": "Get Workflow File",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "githubApi": {
+          "id": "YOUR_GITHUB_API_ID",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $input.first().json.commits.flatMap(commit => {\n  const added = (commit.added || []).filter(f => f.endsWith('.json') && f.includes('workflow'));\n  const modified = (commit.modified || []).filter(f => f.endsWith('.json') && f.includes('workflow'));\n  return [...added, ...modified].map(file => ({\n    workflow_file: file,\n    owner: $input.first().json.owner,\n    repo: $input.first().json.repo,\n    after_sha: $input.first().json.after_sha\n  }));\n});\nreturn files.map(f => ({ json: f }));"
+      },
+      "id": "extract-workflow-files",
+      "name": "Extract Workflow Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/import-workflow",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workflow_content",
+              "value": "={{ $json.content }}"
+            },
+            {
+              "name": "filename",
+              "value": "={{ $json.workflow_file }}"
+            },
+            {
+              "name": "repository",
+              "value": "={{ $json.owner }}/{{ $json.repo }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "import-to-n8n",
+      "name": "Import to n8n",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "createComment",
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo }}",
+        "issueNumber": "={{ $json.pr_number }}",
+        "body": "✅ Workflow successfully imported to n8n\\n\\nFile: `{{ $json.workflow_file }}`"
+      },
+      "id": "post-success-comment",
+      "name": "Post Success Comment",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "credentials": {
+        "githubApi": {
+          "id": "YOUR_GITHUB_API_ID",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "no-workflow-changes",
+      "name": "No Workflow Changes",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 400]
+    }
+  ],
+  "connections": {
+    "GitHub Push Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Push Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Push Event": {
+      "main": [
+        [
+          {
+            "node": "Has Workflow Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Workflow Changes?": {
+      "main": [
+        [
+          {
+            "node": "Extract Workflow Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Workflow Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Workflow Files": {
+      "main": [
+        [
+          {
+            "node": "Get Workflow File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Workflow File": {
+      "main": [
+        [
+          {
+            "node": "Import to n8n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Import to n8n": {
+      "main": [
+        [
+          {
+            "node": "Post Success Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-31T00:00:00.000Z",
+  "versionId": "v2-fixed"
+}

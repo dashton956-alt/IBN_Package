@@ -1,0 +1,259 @@
+{
+  "name": "GitHub AI PR Review with AI Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "events": ["pull_request"],
+        "authentication": "oAuth2"
+      },
+      "id": "github-pr-trigger",
+      "name": "GitHub PR Trigger",
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "webhookId": "github-ai-pr-review-gemini",
+      "credentials": {
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.item.json;\nconst pr = payload.pull_request;\nconst repo = payload.repository;\nif (!['opened', 'synchronize', 'reopened'].includes(payload.action)) {\n  return [];\n}\nconst prData = {\n  pr_number: pr.number,\n  pr_title: pr.title,\n  pr_body: pr.body || '',\n  pr_state: pr.state,\n  pr_url: pr.html_url,\n  action: payload.action,\n  head_branch: pr.head.ref,\n  base_branch: pr.base.ref,\n  head_sha: pr.head.sha,\n  owner: repo.owner.login,\n  repo_name: repo.name,\n  full_repo_name: repo.full_name,\n  author: pr.user.login,\n  changed_files: pr.changed_files,\n  additions: pr.additions,\n  deletions: pr.deletions,\n  commits: pr.commits\n};\nreturn { json: prData };"
+      },
+      "id": "parse-pr-data",
+      "name": "Parse PR Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "list",
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo_name }}",
+        "pullRequestNumber": "={{ $json.pr_number }}"
+      },
+      "id": "get-pr-files",
+      "name": "Get PR Files",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [680, 400],
+      "credentials": {
+        "githubApi": {
+          "id": "YOUR_GITHUB_API_ID",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prData = $input.first().json;\nconst files = $input.all().slice(1).map(i => i.json);\nconst workflowFiles = files.filter(file => {\n  return file.filename.endsWith('.json') && (file.filename.includes('workflow') || file.filename.startsWith('workflows/')) && file.status !== 'removed';\n});\nif (workflowFiles.length === 0) {\n  return [{ json: { ...prData, has_workflow_changes: false, skip_review: true } }];\n}\nconst structuredFiles = workflowFiles.map(file => ({\n  filename: file.filename,\n  status: file.status,\n  additions: file.additions,\n  deletions: file.deletions,\n  changes: file.changes,\n  patch: file.patch || ''\n}));\nreturn [{ json: { ...prData, has_workflow_changes: true, workflow_files: structuredFiles, workflow_file_count: workflowFiles.length, skip_review: false } }];"
+      },
+      "id": "filter-workflow-files",
+      "name": "Filter Workflow Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "has-workflows",
+              "leftValue": "={{ $json.has_workflow_changes }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      },
+      "id": "check-has-workflows",
+      "name": "Has Workflow Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst files = data.workflow_files || [];\nconst reviewPrompt = `You are an expert n8n workflow automation engineer reviewing a Pull Request.\n\nPR Details:\n- Title: ${data.pr_title}\n- Branch: ${data.head_branch} -> ${data.base_branch}\n- Author: ${data.author}\n- Changed Files: ${data.changed_files}\n- Additions: ${data.additions}, Deletions: ${data.deletions}\n\nWorkflow Files Changed (${files.length}):\n${files.map(f => `- ${f.filename} (${f.status}): +${f.additions} -${f.deletions}\\n\\nChanges:\\n${f.patch}\\n`).join('\\n')}\n\nPlease provide a comprehensive code review focusing on:\n1. Workflow logic and structure\n2. Node configurations and parameters\n3. Error handling and edge cases\n4. Performance and efficiency\n5. Best practices for n8n workflows\n6. Security considerations\n7. Suggestions for improvements\n\nFormat your review in markdown with clear sections and actionable feedback.`;\nreturn { json: { ...data, review_prompt: reviewPrompt } };"
+      },
+      "id": "prepare-review-prompt",
+      "name": "Prepare Review Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.review_prompt }}",
+        "options": {
+          "systemMessage": "You are an expert n8n workflow automation engineer. Provide detailed, actionable code reviews focusing on workflow best practices, security, and efficiency."
+        }
+      },
+      "id": "ai-agent-review",
+      "name": "AI Agent Review",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [1560, 300],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst review = $input.last().json.output || $input.last().json.text || $input.last().json.response || 'No review generated';\nconst commentBody = `## 🤖 AI-Powered Workflow Review\\n\\n**Reviewer:** AI Agent\\n**PR:** #${data.pr_number} - ${data.pr_title}\\n**Files Reviewed:** ${data.workflow_file_count} workflow file(s)\\n\\n---\\n\\n${review}\\n\\n---\\n\\n*This review was automatically generated using AI. Please use human judgment for final decisions.*`;\nreturn { json: { ...data, review_comment: commentBody } };"
+      },
+      "id": "format-review-comment",
+      "name": "Format Review Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "createComment",
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo_name }}",
+        "issueNumber": "={{ $json.pr_number }}",
+        "body": "={{ $json.review_comment }}"
+      },
+      "id": "post-review-comment",
+      "name": "Post Review to PR",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [2000, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "YOUR_GITHUB_API_ID",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "no-workflow-changes",
+      "name": "No Workflow Changes",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1340, 500]
+    }
+  ],
+  "connections": {
+    "GitHub PR Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse PR Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PR Data": {
+      "main": [
+        [
+          {
+            "node": "Get PR Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PR Files": {
+      "main": [
+        [
+          {
+            "node": "Filter Workflow Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Workflow Files": {
+      "main": [
+        [
+          {
+            "node": "Has Workflow Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Workflow Changes?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Review Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Workflow Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Review Prompt": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Review": {
+      "main": [
+        [
+          {
+            "node": "Format Review Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Review Comment": {
+      "main": [
+        [
+          {
+            "node": "Post Review to PR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-31T00:00:00.000Z",
+  "versionId": "gemini-v1"
+}
