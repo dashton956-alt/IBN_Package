@@ -1,0 +1,28 @@
+services:
+  batfish:
+    image: batfish/allinone:latest
+    container_name: batfish
+    ports:
+      - "9997:9997"
+    networks:
+      - batfish_net
+
+  dashboard:
+    build:
+      context: ./batfish_dashboard
+    image: batfish_dashboard
+    container_name: batfish_dashboard
+    ports:
+      - "8050:8050"
+    environment:
+      - BATFISH_HOST=batfish
+      - BATFISH_PORT=9997
+    depends_on:
+      - batfish
+    networks:
+      - batfish_net
+
+networks:
+  batfish_net:
+    driver: bridge
+
