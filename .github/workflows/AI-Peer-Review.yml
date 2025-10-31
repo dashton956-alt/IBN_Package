@@ -105,18 +105,16 @@ jobs:
         with:
           script: |
             const pr_number = ${{ steps.pr-info.outputs.pr_number }};
+            const workflow_count = '${{ steps.check-workflows.outputs.workflow_count }}';
             
             const comment = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: pr_number,
-              body: `## 🤖 AI Workflow Review
-
-⏳ **Status:** Review in progress...
-
-Found ${{ steps.check-workflows.outputs.workflow_count }} workflow file(s) to review. Claude AI is analyzing the changes.
-
-This may take a minute or two.`
+              body: `## 🤖 AI Workflow Review\n\n` +
+                    `⏳ **Status:** Review in progress...\n\n` +
+                    `Found ${workflow_count} workflow file(s) to review. AI is analyzing the changes.\n\n` +
+                    `This may take a minute or two.`
             });
             
             core.setOutput('pending_comment_id', comment.data.id);
@@ -224,26 +222,28 @@ This may take a minute or two.`
             const commentId = ${{ steps.pr-info.outputs.pending_comment_id || 0 }};
             
             if (commentId > 0 && !response.actions_taken?.comment_posted) {
-              // Update the pending comment if AI didn't post
+              const reviewText = response.review?.review_text || 'No review text available';
+              const riskLevel = response.review?.risk_level || 'Unknown';
+              const qualityScore = response.review?.quality_score || 'N/A';
+              const approvalStatus = response.review?.approval_status || 'COMMENT';
+              const executionId = response.metadata?.execution_id || 'N/A';
+              
+              const body = `## 🤖 AI Workflow Review\n\n` +
+                          `✅ **Status:** Review completed\n\n` +
+                          `**Risk Level:** ${riskLevel}\n` +
+                          `**Quality Score:** ${qualityScore}/10\n` +
+                          `**Recommendation:** ${approvalStatus}\n\n` +
+                          `${reviewText}\n\n` +
+                          `---\n` +
+                          `*Review ID: ${executionId}*`;
+              
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: commentId,
-                body: `## 🤖 AI Workflow Review
-
-✅ **Status:** Review completed
-
-**Risk Level:** ${response.review?.risk_level || 'Unknown'}
-**Quality Score:** ${response.review?.quality_score || 'N/A'}/10
-**Recommendation:** ${response.review?.approval_status || 'COMMENT'}
-
-${response.review?.review_text || 'No review text available'}
-
----
-*Review ID: ${response.metadata?.execution_id}*`
+                body: body
               });
             } else if (commentId > 0) {
-              // Delete pending comment if AI posted its own
               await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
