@@ -1,0 +1,182 @@
+{
+  "name": "GitHub Workflow Sync - Scheduled",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "list",
+        "owner": "dashton956-alt",
+        "repository": "IBN_Package",
+        "filePath": "n8n/workflows"
+      },
+      "id": "list-workflow-files",
+      "name": "List Workflow Files from Merge/Workflows",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $input.all();\nconst workflowFiles = files.filter(item => {\n  const file = item.json;\n  return file.type === 'file' && \n         file.name.endsWith('.json') && \n         file.path.includes('workflows/');\n});\n\nif (workflowFiles.length === 0) {\n  return [{ json: { no_workflows: true, message: 'No workflow files found' } }];\n}\n\nreturn workflowFiles.map(item => ({\n  json: {\n    filename: item.json.name,\n    path: item.json.path,\n    sha: item.json.sha,\n    download_url: item.json.download_url\n  }\n}));"
+      },
+      "id": "filter-workflow-files",
+      "name": "Filter Workflow JSON Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.download_url }}",
+        "options": {}
+      },
+      "id": "download-workflow",
+      "name": "Download Workflow Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowContent = $input.item.json;\nconst filename = $node['Filter Workflow JSON Files'].json.filename;\nconst path = $node['Filter Workflow JSON Files'].json.path;\n\nlet workflowData;\ntry {\n  workflowData = typeof workflowContent === 'string' ? JSON.parse(workflowContent) : workflowContent;\n} catch (e) {\n  throw new Error(`Failed to parse workflow JSON for ${filename}: ${e.message}`);\n}\n\nreturn {\n  json: {\n    workflow_name: workflowData.name || filename.replace('.json', ''),\n    workflow_data: workflowData,\n    filename: filename,\n    path: path,\n    imported_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "prepare-workflow-import",
+      "name": "Prepare Workflow for Import",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/api/v1/workflows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.workflow_data) }}",
+        "options": {}
+      },
+      "id": "import-to-n8n",
+      "name": "Import Workflow to n8n",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_N8N_API_KEY_ID",
+          "name": "n8n API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.all();\nconst successful = results.filter(r => r.json.id).length;\nconst failed = results.length - successful;\n\nreturn {\n  json: {\n    total_workflows: results.length,\n    successful_imports: successful,\n    failed_imports: failed,\n    completed_at: new Date().toISOString(),\n    workflows: results.map(r => ({\n      name: r.json.name || 'Unknown',\n      id: r.json.id || 'Failed',\n      status: r.json.id ? 'imported' : 'failed'\n    }))\n  }\n};"
+      },
+      "id": "summary",
+      "name": "Import Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "List Workflow Files from Merge/Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Workflow Files from Merge/Workflows": {
+      "main": [
+        [
+          {
+            "node": "Filter Workflow JSON Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Workflow JSON Files": {
+      "main": [
+        [
+          {
+            "node": "Download Workflow Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Workflow Content": {
+      "main": [
+        [
+          {
+            "node": "Prepare Workflow for Import",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Workflow for Import": {
+      "main": [
+        [
+          {
+            "node": "Import Workflow to n8n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Import Workflow to n8n": {
+      "main": [
+        [
+          {
+            "node": "Import Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-31T00:00:00.000Z",
+  "versionId": "1"
+}
