@@ -20,14 +20,17 @@
     },
     {
       "parameters": {
-        "resource": "file",
-        "operation": "list",
+        "resource": "repository",
+        "operation": "getContent",
         "owner": "dashton956-alt",
         "repository": "IBN_Package",
-        "filePath": "n8n/workflows"
+        "filePath": "n8n/workflows",
+        "additionalParameters": {
+          "ref": "Merge/Workflows"
+        }
       },
-      "id": "list-workflow-files",
-      "name": "List Workflow Files from Merge/Workflows",
+      "id": "list-workflow-folders",
+      "name": "Get Workflow Folders",
       "type": "n8n-nodes-base.github",
       "typeVersion": 1,
       "position": [460, 300],
@@ -40,13 +43,46 @@
     },
     {
       "parameters": {
-        "jsCode": "const files = $input.all();\nconst workflowFiles = files.filter(item => {\n  const file = item.json;\n  return file.type === 'file' && \n         file.name.endsWith('.json') && \n         file.path.includes('workflows/');\n});\n\nif (workflowFiles.length === 0) {\n  return [{ json: { no_workflows: true, message: 'No workflow files found' } }];\n}\n\nreturn workflowFiles.map(item => ({\n  json: {\n    filename: item.json.name,\n    path: item.json.path,\n    sha: item.json.sha,\n    download_url: item.json.download_url\n  }\n}));"
+        "jsCode": "// Get all folder items\nconst items = $input.all();\nconst folders = items.filter(item => item.json.type === 'dir');\n\n// Output each folder path to fetch files from\nreturn folders.map(folder => ({\n  json: {\n    folder_name: folder.json.name,\n    folder_path: folder.json.path\n  }\n}));"
       },
-      "id": "filter-workflow-files",
-      "name": "Filter Workflow JSON Files",
+      "id": "get-folder-paths",
+      "name": "Get Folder Paths",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "resource": "repository",
+        "operation": "getContent",
+        "owner": "dashton956-alt",
+        "repository": "IBN_Package",
+        "filePath": "={{ $json.folder_path }}",
+        "additionalParameters": {
+          "ref": "Merge/Workflows"
+        }
+      },
+      "id": "list-files-in-folder",
+      "name": "List Files in Folder",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter for JSON workflow files only\nconst items = $input.all();\nconst workflowFiles = items.filter(item => {\n  const file = item.json;\n  return file.type === 'file' && file.name.endsWith('.json');\n});\n\nif (workflowFiles.length === 0) {\n  return [];\n}\n\nreturn workflowFiles.map(item => ({\n  json: {\n    filename: item.json.name,\n    path: item.json.path,\n    sha: item.json.sha,\n    download_url: item.json.download_url\n  }\n}));"
+      },
+      "id": "filter-workflow-files",
+      "name": "Filter JSON Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -57,17 +93,17 @@
       "name": "Download Workflow Content",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [900, 300]
+      "position": [1340, 300]
     },
     {
       "parameters": {
-        "jsCode": "const workflowContent = $input.item.json;\nconst filename = $node['Filter Workflow JSON Files'].json.filename;\nconst path = $node['Filter Workflow JSON Files'].json.path;\n\nlet workflowData;\ntry {\n  workflowData = typeof workflowContent === 'string' ? JSON.parse(workflowContent) : workflowContent;\n} catch (e) {\n  throw new Error(`Failed to parse workflow JSON for ${filename}: ${e.message}`);\n}\n\nreturn {\n  json: {\n    workflow_name: workflowData.name || filename.replace('.json', ''),\n    workflow_data: workflowData,\n    filename: filename,\n    path: path,\n    imported_at: new Date().toISOString()\n  }\n};"
+        "jsCode": "const workflowContent = $input.item.json;\nconst filename = $node['Filter JSON Files'].json.filename;\nconst path = $node['Filter JSON Files'].json.path;\n\nlet workflowData;\ntry {\n  workflowData = typeof workflowContent === 'string' ? JSON.parse(workflowContent) : workflowContent;\n} catch (e) {\n  throw new Error(`Failed to parse workflow JSON for ${filename}: ${e.message}`);\n}\n\nreturn {\n  json: {\n    workflow_name: workflowData.name || filename.replace('.json', ''),\n    workflow_data: workflowData,\n    filename: filename,\n    path: path,\n    imported_at: new Date().toISOString()\n  }\n};"
       },
       "id": "prepare-workflow-import",
       "name": "Prepare Workflow for Import",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [1560, 300]
     },
     {
       "parameters": {
@@ -84,7 +120,7 @@
       "name": "Import Workflow to n8n",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 300],
+      "position": [1780, 300],
       "credentials": {
         "httpHeaderAuth": {
           "id": "YOUR_N8N_API_KEY_ID",
@@ -100,7 +136,7 @@
       "name": "Import Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 300]
+      "position": [2000, 300]
     }
   ],
   "connections": {
@@ -108,25 +144,47 @@
       "main": [
         [
           {
-            "node": "List Workflow Files from Merge/Workflows",
+            "node": "Get Workflow Folders",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "List Workflow Files from Merge/Workflows": {
+    "Get Workflow Folders": {
       "main": [
         [
           {
-            "node": "Filter Workflow JSON Files",
+            "node": "Get Folder Paths",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter Workflow JSON Files": {
+    "Get Folder Paths": {
+      "main": [
+        [
+          {
+            "node": "List Files in Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Files in Folder": {
+      "main": [
+        [
+          {
+            "node": "Filter JSON Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter JSON Files": {
       "main": [
         [
           {
