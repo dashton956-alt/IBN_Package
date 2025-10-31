@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  gluware:
+    image: gluware/controller:latest
+    container_name: gluware
+    restart: unless-stopped
+    ports:
+      - "8443:443"
+    networks:
+      - st2_docker_private
+
+networks:
+  st2_docker_private:
+    external: true
+    name: st2-docker_private

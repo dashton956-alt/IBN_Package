@@ -1,0 +1,304 @@
+{
+  "name": "Syslog - Error Alert Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "topic": "syslog-error",
+        "groupId": "n8n-error-alerts",
+        "brokers": "kafka:9092",
+        "options": {
+          "sessionTimeout": 30000,
+          "allowAutoTopicCreation": false,
+          "returnPartialMessages": false
+        }
+      },
+      "id": "kafka-consumer",
+      "name": "Kafka Error Consumer",
+      "type": "n8n-nodes-base.kafkaTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Consumes error-level messages from Kafka topic"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and enrich the Kafka message\nconst items = $input.all();\nconst enrichedItems = [];\n\nfor (const item of items) {\n  try {\n    // Parse JSON message if it's a string\n    let logData = item.json.message;\n    if (typeof logData === 'string') {\n      logData = JSON.parse(logData);\n    }\n    \n    // Extract key fields\n    const enriched = {\n      timestamp: logData.timestamp || new Date().toISOString(),\n      host: logData.host || logData.source_host || 'unknown',\n      severity: logData.severity || 'error',\n      program: logData.program || 'unknown',\n      message: logData.message || '',\n      facility: logData.facility || 'unknown',\n      event_type: logData.event_type || 'unknown',\n      \n      // Add metadata\n      kafka_partition: item.json.partition,\n      kafka_offset: item.json.offset,\n      kafka_topic: item.json.topic,\n      \n      // Generate alert ID\n      alert_id: `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,\n      \n      // Determine alert priority\n      priority: logData.severity === 'critical' || logData.severity === 'emergency' ? 'P1' : 'P2'\n    };\n    \n    enrichedItems.push({ json: enriched });\n  } catch (error) {\n    console.error('Error parsing message:', error);\n    enrichedItems.push({\n      json: {\n        error: 'Failed to parse message',\n        raw_message: item.json.message,\n        timestamp: new Date().toISOString()\n      }\n    });\n  }\n}\n\nreturn enrichedItems;"
+      },
+      "id": "parse-message",
+      "name": "Parse & Enrich Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "notes": "Parses JSON and enriches with metadata"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.severity }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.severity }}",
+              "rightValue": "emergency",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "check-severity",
+      "name": "Check Severity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Routes based on severity level"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "post",
+        "channelId": {
+          "__rl": true,
+          "value": "alerts-critical",
+          "mode": "name"
+        },
+        "text": "=🚨 **CRITICAL ALERT** 🚨\n\n**Alert ID:** {{ $json.alert_id }}\n**Priority:** {{ $json.priority }}\n**Host:** {{ $json.host }}\n**Program:** {{ $json.program }}\n**Severity:** {{ $json.severity }}\n**Time:** {{ $json.timestamp }}\n\n**Message:**\n```\n{{ $json.message }}\n```\n\n**Facility:** {{ $json.facility }}\n**Event Type:** {{ $json.event_type }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      },
+      "id": "slack-critical",
+      "name": "Send Slack Alert (Critical)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [900, 200],
+      "notes": "Sends critical alerts to Slack",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "1",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "post",
+        "channelId": {
+          "__rl": true,
+          "value": "alerts-errors",
+          "mode": "name"
+        },
+        "text": "=⚠️ **Error Alert**\n\n**Alert ID:** {{ $json.alert_id }}\n**Host:** {{ $json.host }}\n**Program:** {{ $json.program }}\n**Time:** {{ $json.timestamp }}\n\n**Message:** {{ $json.message }}\n\n**Priority:** {{ $json.priority }}",
+        "otherOptions": {}
+      },
+      "id": "slack-error",
+      "name": "Send Slack Alert (Error)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [900, 400],
+      "notes": "Sends error alerts to Slack",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "1",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "issueKey": {
+          "mode": "id",
+          "value": "={{ $json.alert_id }}"
+        },
+        "projectKey": "SYSLOG",
+        "issueType": "Bug",
+        "summary": "={{ $json.host }} - {{ $json.program }} - {{ $json.severity }}",
+        "description": "=**Alert Details**\n\nAlert ID: {{ $json.alert_id }}\nHost: {{ $json.host }}\nProgram: {{ $json.program }}\nSeverity: {{ $json.severity }}\nTimestamp: {{ $json.timestamp }}\n\n**Message:**\n{{ $json.message }}\n\n**Additional Info:**\nFacility: {{ $json.facility }}\nEvent Type: {{ $json.event_type }}\nKafka Topic: {{ $json.kafka_topic }}\nPartition: {{ $json.kafka_partition }}\nOffset: {{ $json.kafka_offset }}",
+        "priority": "={{ $json.priority === 'P1' ? 'Highest' : 'High' }}",
+        "additionalFields": {}
+      },
+      "id": "jira-ticket",
+      "name": "Create Jira Ticket",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [1120, 200],
+      "notes": "Creates Jira ticket for critical issues",
+      "credentials": {
+        "jiraApi": {
+          "id": "2",
+          "name": "Jira"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://loki:3100/loki/api/v1/push",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {},
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"streams\": [\n    {\n      \"stream\": {\n        \"job\": \"n8n-alerts\",\n        \"alert_id\": $json.alert_id,\n        \"host\": $json.host,\n        \"severity\": $json.severity,\n        \"source\": \"kafka\"\n      },\n      \"values\": [\n        [\n          String(Date.parse($json.timestamp) * 1000000),\n          JSON.stringify({\n            alert_id: $json.alert_id,\n            host: $json.host,\n            program: $json.program,\n            message: $json.message,\n            severity: $json.severity,\n            handled_by: \"n8n\"\n          })\n        ]\n      ]\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "log-to-loki",
+      "name": "Log Alert to Loki",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400],
+      "notes": "Logs alert handling to Loki for audit trail"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store alert in memory or database for deduplication\nconst alert = $input.item.json;\nconst alertKey = `${alert.host}_${alert.program}_${alert.severity}`;\n\n// In production, use a database or cache\n// For now, just log and pass through\nconsole.log(`Processing alert: ${alertKey}`);\n\nreturn $input.all();"
+      },
+      "id": "deduplicate",
+      "name": "Deduplicate Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300],
+      "notes": "Prevents duplicate alerts (implement with Redis in production)"
+    }
+  ],
+  "connections": {
+    "Kafka Error Consumer": {
+      "main": [
+        [
+          {
+            "node": "Parse & Enrich Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Enrich Message": {
+      "main": [
+        [
+          {
+            "node": "Check Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Severity": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert (Critical)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Slack Alert (Error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert (Critical)": {
+      "main": [
+        [
+          {
+            "node": "Create Jira Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert (Error)": {
+      "main": [
+        [
+          {
+            "node": "Log Alert to Loki",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Jira Ticket": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Alert to Loki": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "syslog"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "alerts"
+    }
+  ],
+  "meta": {
+    "instanceId": "syslog-error-alerts"
+  },
+  "id": "syslog-error-alerts-001",
+  "versionId": "1.0.0"
+}

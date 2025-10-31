@@ -1,0 +1,3 @@
+FROM scratch
+ADD cEOS-lab-4.35.0F.tar.tar /
+CMD ["/sbin/init"]

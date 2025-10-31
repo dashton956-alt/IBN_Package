@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # LocalAI - LLM inference engine (Claude-compatible API)
+  localai:
+    image: localai/localai:latest-aio-cpu
+    container_name: chatops-localai
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Localai/models:/models
+      - localai-data:/var/lib/localai
+    environment:
+      - THREADS=4
+      - CONTEXT_SIZE=8192
+      - DEBUG=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/models"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+    networks:
+      - chatops-network
+
+  # Open WebUI - ChatOps interface with function calling support
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: chatops-open-webui
+    ports:
+      - "3001:8080"
+    environment:
+      # Security
+      - WEBUI_SECRET_KEY=${JWT_SECRET:-change-me-to-a-strong-secret}
+      
+      # LLM Provider - LocalAI with Claude Sonnet 4.5 compatible model
+      - OPENAI_API_BASE_URL=http://localai:8080/v1
+      - OPENAI_API_KEY=sk-local
+      - DEFAULT_MODELS=gpt-4o
+      - ENABLE_OPENAI_API=true
+      - ENABLE_OLLAMA_API=false
+      
+      # UI Settings
+      - WEBUI_AUTH=false
+      - ENABLE_SIGNUP=false
+      - DEFAULT_USER_ROLE=admin
+      
+      # Admin Settings
+      - ENABLE_ADMIN_EXPORT=true
+      - ENABLE_ADMIN_CHAT_ACCESS=true
+      
+      # Function Calling & Tools
+      - ENABLE_TOOLS=true
+      - ENABLE_RAG=true
+      
+      # NetBox API Integration
+      - NETBOX_URL=http://netbox-docker-netbox-1:8000
+      - NETBOX_TOKEN=${NETBOX_TOKEN}
+    volumes:
+      - ./open-webui:/app/backend/data
+    depends_on:
+      localai:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    extra_hosts:
+      - "netbox-docker-netbox-1:host-gateway"
+      - "batfish:host-gateway"
+      - "st2-docker-st2api-1:host-gateway"
+      - "glueware:host-gateway"
+    networks:
+      - chatops-network
+
+volumes:
+  localai-data:
+    driver: local
+  open-webui-data:
+    driver: local
+
+networks:
+  chatops-network:
+    driver: bridge
+    name: chatops-network

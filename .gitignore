@@ -385,3 +385,6 @@ test-output/
 !.env.template
 !config.example.*
 !docker-compose.example.yml
+
+# Security Audit Reports (local only)
+SECURITY_AUDIT.md

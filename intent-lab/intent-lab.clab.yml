@@ -1,0 +1,40 @@
+name: clos-lab
+topology:
+  nodes:
+    spine1:
+      kind: juniper_vjunosrouter
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+    spine2:
+      kind: juniper_vjunosrouter
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+    leaf1:
+      kind: juniper_vjunosswitch
+      image: vrnetlab/juniper_vjunos-switch:25.2R1.9
+    leaf2:
+      kind: juniper_vjunosswitch
+      image: vrnetlab/juniper_vjunos-switch:25.2R1.9
+    tg1:
+      kind: linux
+      image: alpine
+    tg2:
+      kind: linux
+      image: alpine
+    tg3:
+      kind: linux
+      image: ubuntu
+    tg4:
+      kind: linux
+      image: ubuntu
+
+  links:
+
+    #Spine to Spine links 
+    - endpoints: [ "leaf1:eth1", "spine1:eth1" ]
+    - endpoints: [ "leaf1:eth2", "spine2:eth1" ]
+    - endpoints: [ "leaf2:eth2", "spine1:eth2" ]
+    - endpoints: [ "leaf2:eth1", "spine2:eth2" ]
+    - endpoints: [ "leaf1:eth5", "tg1:eth1" ]
+    - endpoints: [ "leaf1:eth6", "tg2:eth1" ]
+    - endpoints: [ "leaf2:eth5", "tg3:eth1" ]
+    - endpoints: [ "leaf2:eth6", "tg4:eth1" ]
+    - endpoints: [ "spine1:eth10","spine2:eth10"]

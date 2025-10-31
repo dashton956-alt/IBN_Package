@@ -1,0 +1,368 @@
+{
+  "name": "Syslog - Config Change Detection",
+  "nodes": [
+    {
+      "parameters": {
+        "topic": "device-events",
+        "groupId": "n8n-config-changes",
+        "brokers": "kafka:9092",
+        "options": {
+          "sessionTimeout": 30000,
+          "allowAutoTopicCreation": false
+        }
+      },
+      "id": "kafka-consumer",
+      "name": "Kafka Device Events",
+      "type": "n8n-nodes-base.kafkaTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Consumes device event messages from Kafka"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse device event message\nconst items = $input.all();\nconst parsedItems = [];\n\nfor (const item of items) {\n  try {\n    let eventData = item.json.message;\n    if (typeof eventData === 'string') {\n      eventData = JSON.parse(eventData);\n    }\n    \n    const parsed = {\n      timestamp: eventData.timestamp || new Date().toISOString(),\n      host: eventData.host || eventData.source_host || 'unknown',\n      device_name: eventData.host,\n      event_type: eventData.event_type || 'config_change',\n      message: eventData.message || '',\n      program: eventData.program || 'unknown',\n      user: extractUser(eventData.message),\n      config_section: extractConfigSection(eventData.message),\n      change_type: classifyChange(eventData.message),\n      \n      // Kafka metadata\n      kafka_partition: item.json.partition,\n      kafka_offset: item.json.offset,\n      kafka_topic: item.json.topic,\n      \n      // Generate event ID\n      event_id: `config_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`\n    };\n    \n    parsedItems.push({ json: parsed });\n  } catch (error) {\n    console.error('Error parsing device event:', error);\n  }\n}\n\nfunction extractUser(message) {\n  const userMatch = message.match(/user[:\\s]+([\\w\\-\\.]+)/i);\n  return userMatch ? userMatch[1] : 'unknown';\n}\n\nfunction extractConfigSection(message) {\n  const sections = ['interface', 'routing', 'acl', 'vlan', 'bgp', 'ospf', 'snmp'];\n  for (const section of sections) {\n    if (message.toLowerCase().includes(section)) {\n      return section;\n    }\n  }\n  return 'general';\n}\n\nfunction classifyChange(message) {\n  if (message.match(/add|create|new/i)) return 'addition';\n  if (message.match(/delet|remov/i)) return 'deletion';\n  if (message.match(/modif|chang|updat/i)) return 'modification';\n  return 'unknown';\n}\n\nreturn parsedItems;"
+      },
+      "id": "parse-event",
+      "name": "Parse Device Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "notes": "Parses and classifies configuration changes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.config_section }}",
+              "rightValue": "acl",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.config_section }}",
+              "rightValue": "routing",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-3",
+              "leftValue": "={{ $json.change_type }}",
+              "rightValue": "deletion",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "check-criticality",
+      "name": "Check Criticality",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Identifies critical configuration changes"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "post",
+        "channelId": {
+          "__rl": true,
+          "value": "network-changes",
+          "mode": "name"
+        },
+        "text": "=🔧 **Critical Configuration Change Detected**\n\n**Event ID:** {{ $json.event_id }}\n**Device:** {{ $json.device_name }}\n**Section:** {{ $json.config_section }}\n**Change Type:** {{ $json.change_type }}\n**User:** {{ $json.user }}\n**Time:** {{ $json.timestamp }}\n\n**Details:**\n```\n{{ $json.message }}\n```\n\n⚠️ *This change requires review*",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      },
+      "id": "slack-critical-change",
+      "name": "Alert Critical Change",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [900, 200],
+      "notes": "Alerts team about critical config changes",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "1",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://your-cmdb-api/api/config-changes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"event_id\": $json.event_id,\n  \"device\": $json.device_name,\n  \"timestamp\": $json.timestamp,\n  \"user\": $json.user,\n  \"section\": $json.config_section,\n  \"change_type\": $json.change_type,\n  \"message\": $json.message,\n  \"criticality\": \"high\"\n} }}",
+        "options": {}
+      },
+      "id": "log-to-cmdb",
+      "name": "Log to CMDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 400],
+      "notes": "Records change in CMDB system"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "config-change-log-sheet-id",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Config Changes",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "device": "={{ $json.device_name }}",
+            "user": "={{ $json.user }}",
+            "section": "={{ $json.config_section }}",
+            "change_type": "={{ $json.change_type }}",
+            "message": "={{ $json.message }}",
+            "event_id": "={{ $json.event_id }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-to-sheets",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1120, 200],
+      "notes": "Creates audit trail in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.config_section }}",
+              "rightValue": "acl",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-acl",
+      "name": "Is ACL Change?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 400],
+      "notes": "Checks if change affects ACLs"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "compliance-check-workflow",
+          "mode": "name"
+        },
+        "options": {},
+        "fieldsUi": {
+          "values": [
+            {
+              "name": "device",
+              "value": "={{ $json.device_name }}"
+            },
+            {
+              "name": "change_type",
+              "value": "acl"
+            },
+            {
+              "name": "event_id",
+              "value": "={{ $json.event_id }}"
+            }
+          ]
+        }
+      },
+      "id": "trigger-compliance",
+      "name": "Trigger Compliance Check",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "notes": "Triggers compliance verification workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze change pattern and generate insights\nconst event = $input.item.json;\n\nconst analysis = {\n  ...event,\n  risk_score: calculateRiskScore(event),\n  requires_approval: requiresApproval(event),\n  compliance_tags: getComplianceTags(event),\n  recommended_actions: getRecommendedActions(event)\n};\n\nfunction calculateRiskScore(evt) {\n  let score = 0;\n  \n  if (evt.change_type === 'deletion') score += 30;\n  if (evt.config_section === 'acl') score += 25;\n  if (evt.config_section === 'routing') score += 20;\n  if (evt.user === 'unknown') score += 15;\n  \n  return Math.min(score, 100);\n}\n\nfunction requiresApproval(evt) {\n  return evt.config_section === 'acl' || \n         evt.config_section === 'routing' ||\n         evt.change_type === 'deletion';\n}\n\nfunction getComplianceTags(evt) {\n  const tags = [];\n  if (evt.config_section === 'acl') tags.push('PCI-DSS', 'SOC2');\n  if (evt.config_section === 'snmp') tags.push('monitoring');\n  return tags;\n}\n\nfunction getRecommendedActions(evt) {\n  const actions = [];\n  if (evt.risk_score > 50) {\n    actions.push('Review change immediately');\n    actions.push('Verify authorization');\n  }\n  if (evt.config_section === 'acl') {\n    actions.push('Run security audit');\n  }\n  return actions;\n}\n\nreturn [{ json: analysis }];"
+      },
+      "id": "analyze-change",
+      "name": "Analyze Change Impact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 500],
+      "notes": "Performs risk analysis on configuration changes"
+    }
+  ],
+  "connections": {
+    "Kafka Device Events": {
+      "main": [
+        [
+          {
+            "node": "Parse Device Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Device Event": {
+      "main": [
+        [
+          {
+            "node": "Check Criticality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Criticality": {
+      "main": [
+        [
+          {
+            "node": "Alert Critical Change",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to CMDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Critical Change": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to CMDB": {
+      "main": [
+        [
+          {
+            "node": "Is ACL Change?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Trigger Compliance Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is ACL Change?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Compliance Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyze Change Impact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "syslog"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "config-management"
+    }
+  ],
+  "meta": {
+    "instanceId": "config-change-detection"
+  },
+  "id": "config-change-detection-001",
+  "versionId": "1.0.0"
+}

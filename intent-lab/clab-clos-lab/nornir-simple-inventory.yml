@@ -1,0 +1,41 @@
+---
+spine1:
+    username: admin
+    password: admin@123
+    platform: juniper_vjunosrouter
+    hostname: 172.20.20.9
+spine2:
+    username: admin
+    password: admin@123
+    platform: juniper_vjunosrouter
+    hostname: 172.20.20.8
+leaf1:
+    username: admin
+    password: admin@123
+    platform: juniper_vjunosswitch
+    hostname: 172.20.20.6
+leaf2:
+    username: admin
+    password: admin@123
+    platform: juniper_vjunosswitch
+    hostname: 172.20.20.7
+tg1:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.20.4
+tg2:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.20.2
+tg3:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.20.3
+tg4:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.20.5
