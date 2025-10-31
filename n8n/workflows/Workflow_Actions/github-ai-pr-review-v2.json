@@ -1,0 +1,436 @@
+{
+  "name": "GitHub AI Pull Request Review (v2)",
+  "nodes": [
+    {
+      "parameters": {
+        "owner": "={{ $json.repository.owner.login }}",
+        "repository": "={{ $json.repository.name }}",
+        "events": [
+          "pull_request"
+        ],
+        "requestMethod": "POST",
+        "options": {}
+      },
+      "id": "github-pr-trigger",
+      "name": "GitHub PR Trigger",
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "webhookId": "github-ai-pr-review",
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "notes": "Triggers on PR opened/synchronize"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GitHub PR event\nconst payload = $input.item.json;\nconst pr = payload.pull_request;\nconst repo = payload.repository;\n\n// Only process opened and synchronize events\nif (!['opened', 'synchronize', 'reopened'].includes(payload.action)) {\n  console.log(`Skipping action: ${payload.action}`);\n  return [];\n}\n\n// Extract PR details\nconst prData = {\n  // PR Info\n  pr_number: pr.number,\n  pr_title: pr.title,\n  pr_body: pr.body || '',\n  pr_state: pr.state,\n  pr_url: pr.html_url,\n  pr_api_url: pr.url,\n  action: payload.action,\n  \n  // Branch info\n  head_branch: pr.head.ref,\n  base_branch: pr.base.ref,\n  head_sha: pr.head.sha,\n  base_sha: pr.base.sha,\n  \n  // Repository info\n  owner: repo.owner.login,\n  repo_name: repo.name,\n  full_repo_name: repo.full_name,\n  \n  // Author info\n  author: pr.user.login,\n  author_url: pr.user.html_url,\n  \n  // Stats\n  changed_files: pr.changed_files,\n  additions: pr.additions,\n  deletions: pr.deletions,\n  commits: pr.commits,\n  \n  // Dates\n  created_at: pr.created_at,\n  updated_at: pr.updated_at,\n  \n  // Metadata\n  triggered_at: new Date().toISOString(),\n  workflow_execution_id: $execution.id\n};\n\nconsole.log('PR Event detected:', {\n  repository: prData.full_repo_name,\n  pr_number: prData.pr_number,\n  action: prData.action,\n  pr_title: prData.pr_title,\n  changed_files: prData.changed_files\n});\n\nreturn { json: prData };"
+      },
+      "id": "parse-pr-data",
+      "name": "Parse PR Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400],
+      "notes": "Extracts and validates PR information"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo_name }}",
+        "pullRequestNumber": "={{ $json.pr_number }}",
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "get-pr-files",
+      "name": "Get PR Files",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [680, 400],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "resource": "file",
+        "operation": "list"
+      },
+      "notes": "Fetches list of changed files in PR"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter for workflow JSON files and prepare for analysis\nconst prData = $input.first().json;\nconst files = $input.all().map(i => i.json) || [];\n\n// Filter for workflow JSON files\nconst workflowFiles = files.filter(file => {\n  return file.filename.endsWith('.json') &&\n         (file.filename.includes('workflow') || \n          file.filename.startsWith('workflows/') ||\n          file.status !== 'removed') &&\n         !file.filename.includes('node_modules') &&\n         !file.filename.includes('package');\n});\n\nif (workflowFiles.length === 0) {\n  console.log('No workflow files changed in this PR');\n  return [{\n    json: {\n      ...prData,\n      has_workflow_changes: false,\n      workflow_files: [],\n      skip_review: true,\n      message: 'No workflow files changed in this PR'\n    }\n  }];\n}\n\nconsole.log(`Found ${workflowFiles.length} workflow file(s) to review`);\n\n// Structure file metadata\nconst structuredFiles = workflowFiles.map(file => ({\n  filename: file.filename,\n  status: file.status,\n  additions: file.additions,\n  deletions: file.deletions,\n  changes: file.changes,\n  patch: file.patch,\n  raw_url: file.raw_url,\n  blob_url: file.blob_url,\n  previous_filename: file.previous_filename\n}));\n\nreturn [{\n  json: {\n    ...prData,\n    has_workflow_changes: true,\n    workflow_files: structuredFiles,\n    workflow_file_count: workflowFiles.length,\n    skip_review: false\n  }\n}];"
+      },
+      "id": "filter-workflow-files",
+      "name": "Filter Workflow Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400],
+      "notes": "Filters for .json workflow files only"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-workflows",
+              "leftValue": "={{ $json.has_workflow_changes }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "not-skip",
+              "leftValue": "={{ $json.skip_review }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-workflow-changes",
+      "name": "Has Workflow Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 400],
+      "notes": "Checks if review is needed"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build comprehensive context for AI analysis\nconst data = $input.item.json;\n\n// Generate detailed summary of changes\nconst filesSummary = data.workflow_files.map(file => {\n  const status = {\n    added: '➕ Added',\n    modified: '📝 Modified', \n    removed: '❌ Removed',\n    renamed: '🔄 Renamed'\n  }[file.status] || file.status;\n  \n  return `${status}: ${file.filename} (+${file.additions}/-${file.deletions})`;\n}).join('\\n');\n\n// Build analysis prompt\nconst analysisPrompt = `You are an expert n8n workflow engineer and code reviewer. Please analyze this pull request containing n8n workflow changes.\n\n## Pull Request Information\n**Title:** ${data.pr_title}\n**Author:** ${data.author}\n**Repository:** ${data.full_repo_name}\n**Branch:** ${data.head_branch} → ${data.base_branch}\n\n**Description:**\n${data.pr_body || 'No description provided'}\n\n## Files Changed (${data.workflow_file_count} workflow files)\n${filesSummary}\n\n## Statistics\n- Total changes: ${data.additions} additions, ${data.deletions} deletions\n- Total files: ${data.changed_files}\n- Commits: ${data.commits}\n\n## Workflow File Changes\n${data.workflow_files.map((file, idx) => `\n### File ${idx + 1}: ${file.filename}\n**Status:** ${file.status}\n**Changes:** +${file.additions} -${file.deletions}\n\n**Diff:**\n\\`\\`\\`diff\n${file.patch || 'No patch available'}\n\\`\\`\\`\n`).join('\\n---\\n')}\n\n## Review Requirements\nPlease provide a comprehensive review with the following sections:\n\n### 1. Summary\nProvide a concise summary of what this PR accomplishes.\n\n### 2. Risk Analysis\nAssess the risk level (Low/Medium/High) and explain:\n- Potential breaking changes\n- Impact on existing workflows\n- Security considerations\n- Data handling concerns\n\n### 3. Code Quality Assessment\nEvaluate:\n- Workflow structure and organization\n- Node configuration best practices\n- Error handling implementation\n- Modularity and reusability\n- Naming conventions\n\n### 4. Specific Observations\nHighlight:\n- Well-implemented patterns\n- Potential issues or bugs\n- Performance considerations\n- Missing error handlers\n- Hardcoded values that should be variables\n\n### 5. Recommendations\nProvide actionable suggestions for:\n- Improvements to workflow design\n- Better error handling\n- Security enhancements\n- Performance optimizations\n- Documentation needs\n\n### 6. Testing Checklist\nSuggest what should be tested:\n- [ ] List specific test scenarios\n- [ ] Edge cases to verify\n- [ ] Integration points to check\n\n### 7. Overall Assessment\nProvide:\n- Approval status: APPROVE, REQUEST_CHANGES, or COMMENT\n- Overall quality score (1-10)\n- Key action items for the author\n\nFormat your response in clear GitHub Markdown that can be posted as a PR comment.`;\n\nreturn {\n  json: {\n    ...data,\n    analysis_prompt: analysisPrompt,\n    prompt_length: analysisPrompt.length,\n    ready_for_ai: true\n  }\n};"
+      },
+      "id": "build-analysis-context",
+      "name": "Build Analysis Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300],
+      "notes": "Prepares comprehensive context for AI"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 4096,\n  \"temperature\": 0.3,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": $json.analysis_prompt\n    }\n  ]\n} }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "call-claude-api",
+      "name": "Call Claude AI API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "notes": "Sends prompt to Claude for analysis"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and structure AI review response\nconst data = $input.item.json;\nconst aiResponse = data.content[0].text;\n\n// Parse the response to extract key sections\nconst extractSection = (text, sectionName) => {\n  const regex = new RegExp(`### \\\\d+\\\\.\\\\s*${sectionName}[\\\\s\\\\S]*?(?=###|$)`, 'i');\n  const match = text.match(regex);\n  return match ? match[0].replace(/^### \\d+\\.\\s*\\w+\\s*/, '').trim() : '';\n};\n\n// Extract risk level\nconst riskMatch = aiResponse.match(/Risk.*?:?\\s*(Low|Medium|High)/i);\nconst riskLevel = riskMatch ? riskMatch[1] : 'Medium';\n\n// Extract approval status\nconst approvalMatch = aiResponse.match(/APPROVE|REQUEST_CHANGES|COMMENT/i);\nconst approvalStatus = approvalMatch ? approvalMatch[0].toUpperCase() : 'COMMENT';\n\n// Extract quality score\nconst scoreMatch = aiResponse.match(/score.*?(\\d+)\\s*\\/\\s*10/i);\nconst qualityScore = scoreMatch ? parseInt(scoreMatch[1]) : null;\n\nconst structuredReview = {\n  // Original data\n  pr_number: data.pr_number,\n  pr_title: data.pr_title,\n  full_repo_name: data.full_repo_name,\n  owner: data.owner,\n  repo_name: data.repo_name,\n  \n  // AI Analysis\n  review_text: aiResponse,\n  review_summary: extractSection(aiResponse, 'Summary'),\n  risk_analysis: extractSection(aiResponse, 'Risk Analysis'),\n  recommendations: extractSection(aiResponse, 'Recommendations'),\n  \n  // Parsed metadata\n  risk_level: riskLevel,\n  approval_status: approvalStatus,\n  quality_score: qualityScore,\n  \n  // Statistics\n  review_length: aiResponse.length,\n  tokens_used: data.usage?.total_tokens || 0,\n  \n  // Timestamps\n  reviewed_at: new Date().toISOString(),\n  \n  // Format for GitHub\n  github_comment_body: `## 🤖 AI Workflow Review\\n\\n${aiResponse}\\n\\n---\\n\\n*Reviewed by Claude AI | ${new Date().toISOString()}*\\n*Review ID: ${$execution.id}*`\n};\n\nconsole.log('AI Review completed:', {\n  risk_level: structuredReview.risk_level,\n  approval_status: structuredReview.approval_status,\n  quality_score: structuredReview.quality_score,\n  review_length: structuredReview.review_length\n});\n\nreturn { json: structuredReview };"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "notes": "Extracts and structures AI review"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo_name }}",
+        "issueNumber": "={{ $json.pr_number }}",
+        "body": "={{ $json.github_comment_body }}",
+        "additionalFields": {}
+      },
+      "id": "post-pr-comment",
+      "name": "Post PR Comment",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [2000, 200],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "resource": "issue",
+        "operation": "createComment"
+      },
+      "notes": "Posts AI review as PR comment"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo_name }}",
+        "pullRequestNumber": "={{ $json.pr_number }}",
+        "event": "={{ $json.approval_status === 'APPROVE' ? 'approve' : $json.approval_status === 'REQUEST_CHANGES' ? 'request_changes' : 'comment' }}",
+        "body": "={{ $json.review_text }}",
+        "additionalFields": {}
+      },
+      "id": "submit-pr-review",
+      "name": "Submit PR Review",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [2000, 400],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "resource": "review",
+        "operation": "create"
+      },
+      "notes": "Submits formal PR review"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo_name }}",
+        "issueNumber": "={{ $json.pr_number }}",
+        "labels": "={{ ['ai-reviewed', `risk:${$json.risk_level.toLowerCase()}`, $json.approval_status === 'APPROVE' ? 'approved' : 'needs-review'] }}",
+        "additionalFields": {}
+      },
+      "id": "add-pr-labels",
+      "name": "Add PR Labels",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [2220, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "resource": "issue",
+        "operation": "addLabels"
+      },
+      "notes": "Tags PR with review metadata"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate final response with review summary\nconst reviewData = $input.item.json;\n\nconst response = {\n  status: 'success',\n  pr_number: reviewData.pr_number,\n  repository: reviewData.full_repo_name,\n  \n  review: {\n    risk_level: reviewData.risk_level,\n    approval_status: reviewData.approval_status,\n    quality_score: reviewData.quality_score,\n    review_length: reviewData.review_length,\n    tokens_used: reviewData.tokens_used\n  },\n  \n  actions_taken: {\n    comment_posted: true,\n    review_submitted: true,\n    labels_added: true\n  },\n  \n  metadata: {\n    reviewed_at: reviewData.reviewed_at,\n    execution_id: $execution.id,\n    workflow_id: $workflow.id\n  }\n};\n\nconsole.log('PR Review workflow completed:', response);\n\nreturn { json: response };"
+      },
+      "id": "generate-response",
+      "name": "Generate Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 300],
+      "notes": "Creates summary response"
+    },
+    {
+      "parameters": {
+        "mode": "returnAsOutput",
+        "nothingToDo": "ignoreNode",
+        "outputMessage": "={{ JSON.stringify({\n  status: 'skipped',\n  message: $json.message || 'No workflow changes detected',\n  pr_number: $json.pr_number,\n  repository: $json.full_repo_name,\n  action: $json.action\n}, null, 2) }}"
+      },
+      "id": "skip-review",
+      "name": "Skip Review",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1340, 500],
+      "notes": "Exits when no workflow changes"
+    }
+  ],
+  "connections": {
+    "GitHub PR Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse PR Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PR Data": {
+      "main": [
+        [
+          {
+            "node": "Get PR Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PR Files": {
+      "main": [
+        [
+          {
+            "node": "Filter Workflow Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Workflow Files": {
+      "main": [
+        [
+          {
+            "node": "Has Workflow Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Workflow Changes?": {
+      "main": [
+        [
+          {
+            "node": "Build Analysis Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Analysis Context": {
+      "main": [
+        [
+          {
+            "node": "Call Claude AI API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude AI API": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Post PR Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Submit PR Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post PR Comment": {
+      "main": [
+        [
+          {
+            "node": "Add PR Labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit PR Review": {
+      "main": [
+        [
+          {
+            "node": "Add PR Labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add PR Labels": {
+      "main": [
+        [
+          {
+            "node": "Generate Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "ai-review"
+    },
+    {
+      "name": "github-integration"
+    },
+    {
+      "name": "automation"
+    },
+    {
+      "name": "v2-github-nodes"
+    }
+  ],
+  "meta": {
+    "instanceId": "github-ai-pr-review-v2"
+  },
+  "id": "github-ai-pr-review-v2-001",
+  "versionId": "2.0.0"
+}

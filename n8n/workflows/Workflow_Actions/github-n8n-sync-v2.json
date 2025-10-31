@@ -1,0 +1,607 @@
+{
+  "name": "GitHub → n8n Workflow Sync (v2)",
+  "nodes": [
+    {
+      "parameters": {
+        "owner": "={{ $json.repository.owner.login }}",
+        "repository": "={{ $json.repository.name }}",
+        "events": [
+          "push"
+        ],
+        "requestMethod": "POST",
+        "options": {}
+      },
+      "id": "github-trigger",
+      "name": "GitHub Push Trigger",
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "github-workflow-sync",
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "notes": "Triggers on push to repository"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GitHub push event\nconst payload = $input.item.json;\n\n// Extract push metadata\nconst pushData = {\n  repository: payload.repository.full_name,
+  owner: payload.repository.owner.login,
+  repo: payload.repository.name,\n  ref: payload.ref,\n  branch: payload.ref.replace('refs/heads/', ''),\n  before_sha: payload.before,\n  after_sha: payload.after,\n  commits: payload.commits || [],\n  pusher: payload.pusher.name,\n  \n  // Check if workflow files were modified\n  has_workflow_changes: payload.commits.some(commit => {\n    const files = [...(commit.added || []), ...(commit.modified || [])];\n    return files.some(file => file.endsWith('.json') && file.includes('workflow'));\n  }),\n  \n  // Metadata\n  triggered_at: new Date().toISOString(),\n  execution_id: $execution.id\n};\n\nconsole.log('GitHub Push detected:', {\n  repository: pushData.repository,\n  branch: pushData.branch,\n  commits: pushData.commits.length,\n  has_workflow_changes: pushData.has_workflow_changes\n});\n\nreturn { json: pushData };"
+      },
+      "id": "parse-push-event",
+      "name": "Parse Push Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "notes": "Extracts push event data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-workflow-changes",
+              "leftValue": "={{ $json.has_workflow_changes }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "not-delete",
+              "leftValue": "={{ $json.after_sha }}",
+              "rightValue": "0000000000000000000000000000000000000000",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-workflow-changes",
+      "name": "Has Workflow Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Check if workflows were modified"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo }}",
+        "filePath": "={{ $json.commit.modified[0] || $json.commit.added[0] }}",
+        "reference": "={{ $json.after_sha }}",
+        "options": {}
+      },
+      "id": "get-repo-files",
+      "name": "Get Repository Files",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "operation": "getRepositoryContent",
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo }}",
+        "filePath": "workflows",
+        "reference": "={{ $json.after_sha }}"
+      },
+      "notes": "Gets workflow directory contents"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter for .json workflow files\nconst files = $input.item.json.data || [];\nconst pushData = $input.first().json;\n\n// Filter for JSON files\nconst workflowFiles = files.filter(file => {\n  return file.type === 'file' && \n         file.name.endsWith('.json') &&\n         !file.name.includes('package');\n});\n\nif (workflowFiles.length === 0) {\n  console.log('No workflow JSON files found');\n  return [];\n}\n\nconsole.log(`Found ${workflowFiles.length} workflow file(s)`);\n\n// Structure workflow metadata\nconst workflows = workflowFiles.map(file => {\n  const pathParts = file.path.split('/');\n  const fileName = file.name;\n  const folderPath = pathParts.slice(0, -1).join('/');\n  \n  // Generate tags from folder structure\n  const tags = pathParts\n    .filter(part => part !== 'workflows' && part !== fileName)\n    .map(part => part.replace(/[_-]/g, ' '));\n  \n  return {\n    // File info\n    path: file.path,\n    fileName: fileName,\n    folderPath: folderPath,\n    sha: file.sha,\n    size: file.size,\n    download_url: file.download_url,\n    \n    // n8n metadata\n    workflowName: fileName.replace('.json', ''),\n    tags: tags,\n    \n    // GitHub metadata\n    repository: pushData.repository,\n    owner: pushData.owner,\n    repo: pushData.repo,\n    branch: pushData.branch,\n    commit_sha: pushData.after_sha\n  };\n});\n\nreturn workflows.map(wf => ({ json: wf }));"
+      },
+      "id": "filter-workflows",
+      "name": "Filter Workflow Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200],
+      "notes": "Filters for .json files and extracts metadata"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo }}",
+        "filePath": "={{ $json.path }}",
+        "reference": "={{ $json.commit_sha }}",
+        "options": {
+          "binaryResult": false
+        }
+      },
+      "id": "fetch-workflow-content",
+      "name": "Fetch Workflow Content",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "operation": "getFileContent",
+        "owner": "={{ $json.owner }}",
+        "repository": "={{ $json.repo }}",
+        "filePath": "={{ $json.path }}",
+        "reference": "={{ $json.branch }}"
+      },
+      "notes": "Downloads workflow JSON content"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate workflow JSON\nconst metadata = $input.item.json;\nlet workflowData;\n\ntry {\n  // Decode base64 content from GitHub API\n  const content = metadata.data?.content || metadata.content;\n  const decoded = Buffer.from(content, 'base64').toString('utf8');\n  workflowData = JSON.parse(decoded);\n} catch (error) {\n  console.error(`Failed to parse workflow ${metadata.fileName}:`, error.message);\n  return {\n    json: {\n      ...metadata,\n      status: 'error',\n      error: 'Invalid JSON format',\n      workflow_data: null\n    }\n  };\n}\n\n// Validate n8n workflow structure\nconst requiredFields = ['name', 'nodes'];\nconst missingFields = requiredFields.filter(field => !workflowData[field]);\n\nif (missingFields.length > 0) {\n  return {\n    json: {\n      ...metadata,\n      status: 'error',\n      error: `Missing required fields: ${missingFields.join(', ')}`,\n      workflow_data: null\n    }\n  };\n}\n\n// Enrich workflow with metadata\nworkflowData.tags = workflowData.tags || [];\n\n// Add folder structure as tags\nif (metadata.tags && metadata.tags.length > 0) {\n  metadata.tags.forEach(tag => {\n    if (!workflowData.tags.find(t => t.name === tag)) {\n      workflowData.tags.push({ name: tag });\n    }\n  });\n}\n\n// Add sync metadata tag\nif (!workflowData.tags.find(t => t.name === 'github-sync')) {\n  workflowData.tags.push({ name: 'github-sync' });\n}\n\n// Add repository tag\nconst repoTag = `repo:${metadata.repository.replace('/', '-')}`;\nif (!workflowData.tags.find(t => t.name === repoTag)) {\n  workflowData.tags.push({ name: repoTag });\n}\n\n// Add settings metadata\nworkflowData.settings = workflowData.settings || {};\nworkflowData.settings.executionOrder = workflowData.settings.executionOrder || 'v1';\n\nreturn {\n  json: {\n    ...metadata,\n    workflow_data: workflowData,\n    status: 'valid',\n    node_count: workflowData.nodes.length,\n    connection_count: Object.keys(workflowData.connections || {}).length\n  }\n};"
+      },
+      "id": "validate-workflow",
+      "name": "Validate & Enrich Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200],
+      "notes": "Validates JSON and adds tags/metadata"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "valid-workflow",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "valid",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-valid",
+      "name": "Check Valid Workflow",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 200],
+      "notes": "Routes valid workflows to import"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "url": "={{ $env.N8N_HOST || 'http://localhost:5678' }}/api/v1/workflows",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "={{ JSON.stringify({ name: $json.workflow_data.name }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-existing",
+      "name": "Check Existing Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 100],
+      "notes": "Checks if workflow already exists in n8n"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine if we need to create or update\nconst metadata = $input.item.json;\nconst existingWorkflows = metadata.data || [];\n\nif (existingWorkflows.length > 0) {\n  const existing = existingWorkflows[0];\n  \n  return {\n    json: {\n      ...metadata,\n      existing_id: existing.id,\n      action: 'update',\n      existing_workflow: existing\n    }\n  };\n} else {\n  return {\n    json: {\n      ...metadata,\n      action: 'create'\n    }\n  };\n}"
+      },
+      "id": "determine-action",
+      "name": "Determine Create or Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 100],
+      "notes": "Decides whether to create new or update existing"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-create",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "create",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-action",
+      "name": "Route: Create or Update",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 100],
+      "notes": "Routes to create or update endpoint"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "={{ $env.N8N_HOST || 'http://localhost:5678' }}/api/v1/workflows",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.workflow_data) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "create-workflow",
+      "name": "Create New Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 0],
+      "notes": "Creates new workflow in n8n"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "PATCH",
+        "url": "={{ $env.N8N_HOST || 'http://localhost:5678' }}/api/v1/workflows/{{ $json.existing_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.workflow_data) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "update-workflow",
+      "name": "Update Existing Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 200],
+      "notes": "Updates existing workflow in n8n"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect results from create/update operations\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const result = {\n    file: item.json.path || item.json.fileName,\n    workflow_name: item.json.workflow_data?.name || item.json.workflowName,\n    action: item.json.action,\n    status: 'success',\n    n8n_id: item.json.id,\n    node_count: item.json.node_count,\n    tags: item.json.workflow_data?.tags?.map(t => t.name) || [],\n    timestamp: new Date().toISOString()\n  };\n  \n  results.push(result);\n}\n\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "collect-results",
+      "name": "Collect Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 100],
+      "notes": "Aggregates operation results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate comprehensive sync report\nconst items = $input.all();\nconst pushData = $input.first().json;\n\nconst successful = items.filter(i => i.json.status === 'success');\nconst failed = items.filter(i => i.json.status === 'failed');\n\nconst report = {\n  summary: {\n    total: items.length,\n    successful: successful.length,\n    failed: failed.length,\n    timestamp: new Date().toISOString(),\n    repository: pushData.repository,\n    branch: pushData.branch,\n    commit_sha: pushData.after_sha,\n    pusher: pushData.pusher\n  },\n  \n  successful_workflows: successful.map(i => ({\n    file: i.json.file,\n    workflow_name: i.json.workflow_name,\n    action: i.json.action,\n    n8n_id: i.json.n8n_id,\n    node_count: i.json.node_count,\n    tags: i.json.tags\n  })),\n  \n  failed_workflows: failed.map(i => ({\n    file: i.json.file,\n    workflow_name: i.json.workflow_name,\n    error: i.json.error\n  })),\n  \n  statistics: {\n    total_nodes: successful.reduce((sum, i) => sum + (i.json.node_count || 0), 0),\n    unique_tags: [...new Set(successful.flatMap(i => i.json.tags || []))],\n    actions: {\n      created: successful.filter(i => i.json.action === 'create').length,\n      updated: successful.filter(i => i.json.action === 'update').length\n    }\n  }\n};\n\nconsole.log('Sync Report:', JSON.stringify(report, null, 2));\n\nreturn { json: report };"
+      },
+      "id": "generate-report",
+      "name": "Generate Sync Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 100],
+      "notes": "Creates detailed sync report"
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.summary.repository.split('/')[0] }}",
+        "repository": "={{ $json.summary.repository.split('/')[1] }}",
+        "commitSha": "={{ $json.summary.commit_sha }}",
+        "state": "={{ $json.summary.successful > 0 ? 'success' : 'failure' }}",
+        "context": "n8n/workflow-sync",
+        "description": "={{ `Synced ${$json.summary.successful}/${$json.summary.total} workflows` }}",
+        "additionalFields": {
+          "targetUrl": "={{ $env.N8N_HOST || 'http://localhost:5678' }}"
+        }
+      },
+      "id": "update-commit-status",
+      "name": "Update Commit Status",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [3320, 100],
+      "credentials": {
+        "githubApi": {
+          "id": "1",
+          "name": "GitHub API"
+        }
+      },
+      "parameters": {
+        "resource": "release",
+        "operation": "createStatus"
+      },
+      "notes": "Updates GitHub commit status"
+    },
+    {
+      "parameters": {
+        "mode": "returnAsOutput",
+        "nothingToDo": "ignoreNode",
+        "outputMessage": "={{ JSON.stringify({\n  status: 'skipped',\n  message: 'No workflow changes in push',\n  repository: $json.repository,\n  branch: $json.branch,\n  commits: $json.commits.length\n}, null, 2) }}"
+      },
+      "id": "no-changes",
+      "name": "No Changes",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "notes": "Exits when no workflow changes"
+    }
+  ],
+  "connections": {
+    "GitHub Push Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Push Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Push Event": {
+      "main": [
+        [
+          {
+            "node": "Has Workflow Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Workflow Changes?": {
+      "main": [
+        [
+          {
+            "node": "Get Repository Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Repository Files": {
+      "main": [
+        [
+          {
+            "node": "Filter Workflow Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Workflow Files": {
+      "main": [
+        [
+          {
+            "node": "Fetch Workflow Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Workflow Content": {
+      "main": [
+        [
+          {
+            "node": "Validate & Enrich Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Enrich Workflow": {
+      "main": [
+        [
+          {
+            "node": "Check Valid Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Valid Workflow": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Workflow": {
+      "main": [
+        [
+          {
+            "node": "Determine Create or Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Create or Update": {
+      "main": [
+        [
+          {
+            "node": "Route: Create or Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Create or Update": {
+      "main": [
+        [
+          {
+            "node": "Create New Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Existing Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Workflow": {
+      "main": [
+        [
+          {
+            "node": "Collect Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Existing Workflow": {
+      "main": [
+        [
+          {
+            "node": "Collect Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Results": {
+      "main": [
+        [
+          {
+            "node": "Generate Sync Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Sync Report": {
+      "main": [
+        [
+          {
+            "node": "Update Commit Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "github-integration"
+    },
+    {
+      "name": "workflow-sync"
+    },
+    {
+      "name": "automation"
+    },
+    {
+      "name": "v2-github-nodes"
+    }
+  ],
+  "meta": {
+    "instanceId": "github-n8n-sync-v2"
+  },
+  "id": "github-n8n-sync-v2-001",
+  "versionId": "2.0.0"
+}
