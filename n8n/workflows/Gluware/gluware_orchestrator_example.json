@@ -1,0 +1,556 @@
+{
+  "name": "Gluware - Example Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "notes": "Runs daily at 2 AM - adjust schedule as needed"
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $workflow.id }}",
+        "options": {}
+      },
+      "id": "get-all-devices",
+      "name": "Get All Devices",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "notes": "Call Devices API sub-workflow to retrieve all devices",
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "Gluware - Devices API",
+          "mode": "list",
+          "cachedResultName": "Gluware - Devices API"
+        },
+        "fieldsUi": {
+          "values": [
+            {
+              "name": "method",
+              "value": "GET"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-devices-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Verify the API call was successful"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter devices that need config drift check\nconst devices = $input.all();\nconst devicesToCheck = [];\n\n// Only check active devices\nfor (const item of devices) {\n  if (item.json.data && Array.isArray(item.json.data)) {\n    const activeDevices = item.json.data.filter(device => \n      device.status === 'active' && device.managementIp\n    );\n    devicesToCheck.push(...activeDevices);\n  }\n}\n\nconsole.log(`Found ${devicesToCheck.length} active devices to check`);\n\nreturn devicesToCheck.map(device => ({\n  json: {\n    deviceId: device.id,\n    deviceName: device.name,\n    deviceIp: device.managementIp\n  }\n}));"
+      },
+      "id": "filter-active-devices",
+      "name": "Filter Active Devices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 200],
+      "notes": "Extract and filter active devices for drift checking"
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1120, 200],
+      "notes": "Process devices in batches of 5 to avoid rate limiting"
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $workflow.id }}",
+        "options": {}
+      },
+      "id": "check-config-drift",
+      "name": "Check Config Drift",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "notes": "Check for configuration drift on each device",
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "Gluware - Config Drift API",
+          "mode": "list",
+          "cachedResultName": "Gluware - Config Drift API"
+        },
+        "fieldsUi": {
+          "values": [
+            {
+              "name": "method",
+              "value": "POST"
+            },
+            {
+              "name": "body",
+              "value": "={{ JSON.stringify({ deviceId: $json.deviceId, scanAll: false }) }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.data.driftsDetected }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-drift-detected",
+      "name": "Drift Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 200],
+      "notes": "Check if any drift was detected"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log drift details and prepare for audit\nconst driftData = $input.all();\nconst driftSummary = [];\n\nfor (const item of driftData) {\n  const device = $('Split In Batches').item.json;\n  const drift = item.json.data;\n  \n  driftSummary.push({\n    deviceId: device.deviceId,\n    deviceName: device.deviceName,\n    severity: drift.severity || 'unknown',\n    driftCount: drift.driftsDetected || 0,\n    timestamp: new Date().toISOString()\n  });\n}\n\nconsole.log('Config drift detected:', JSON.stringify(driftSummary, null, 2));\n\nreturn [{\n  json: {\n    driftSummary: driftSummary,\n    totalDevicesChecked: driftData.length,\n    devicesWithDrift: driftSummary.length\n  }\n}];"
+      },
+      "id": "log-drift",
+      "name": "Log Drift Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 100],
+      "notes": "Aggregate and log drift information"
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $workflow.id }}",
+        "options": {}
+      },
+      "id": "create-audit-entry",
+      "name": "Create Audit Entry",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2000, 100],
+      "notes": "Log drift detection in audit system",
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "Gluware - Audit API",
+          "mode": "list",
+          "cachedResultName": "Gluware - Audit API"
+        },
+        "fieldsUi": {
+          "values": [
+            {
+              "name": "method",
+              "value": "GET"
+            },
+            {
+              "name": "action",
+              "value": "DRIFT_DETECTED"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "post",
+        "channelId": {
+          "__rl": true,
+          "value": "alerts",
+          "mode": "list",
+          "cachedResultName": "#alerts"
+        },
+        "text": "=🚨 Configuration Drift Detected!\n\nDevices with drift: {{ $json.devicesWithDrift }}\nTotal devices checked: {{ $json.totalDevicesChecked }}\n\nDetails:\n{{ JSON.stringify($json.driftSummary, null, 2) }}",
+        "options": {}
+      },
+      "id": "send-slack-alert",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [2000, 300],
+      "notes": "Alert team about detected drift",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "1",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "sendTo": "email@company.com",
+        "subject": "Gluware Config Drift Report - {{ $today.format('YYYY-MM-DD') }}",
+        "emailType": "html",
+        "message": "=<h2>Configuration Drift Report</h2>\n<p><strong>Date:</strong> {{ $today.format('YYYY-MM-DD HH:mm:ss') }}</p>\n<p><strong>Devices Checked:</strong> {{ $json.totalDevicesChecked }}</p>\n<p><strong>Devices with Drift:</strong> {{ $json.devicesWithDrift }}</p>\n\n<h3>Drift Summary</h3>\n<pre>{{ JSON.stringify($json.driftSummary, null, 2) }}</pre>\n\n<p>Please review and remediate as necessary.</p>",
+        "options": {}
+      },
+      "id": "send-email-report",
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2220, 300],
+      "notes": "Email detailed report to operations team",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate comprehensive summary report\nconst startTime = $('Schedule Trigger').item.json.time;\nconst endTime = new Date().toISOString();\nconst duration = Date.now() - new Date(startTime).getTime();\n\nconst summary = {\n  reportType: 'Daily Config Drift Check',\n  executionTime: startTime,\n  completionTime: endTime,\n  durationMs: duration,\n  durationMinutes: Math.round(duration / 60000),\n  \n  results: {\n    totalDevices: $json.totalDevicesChecked || 0,\n    devicesWithDrift: $json.devicesWithDrift || 0,\n    compliancePercentage: $json.totalDevicesChecked > 0 \n      ? Math.round((($json.totalDevicesChecked - $json.devicesWithDrift) / $json.totalDevicesChecked) * 100)\n      : 100\n  },\n  \n  driftDetails: $json.driftSummary || [],\n  \n  recommendations: []\n};\n\n// Add recommendations based on results\nif (summary.results.devicesWithDrift > 0) {\n  summary.recommendations.push('Review and remediate configuration drift');\n  summary.recommendations.push('Update baseline configurations if changes are authorized');\n  summary.recommendations.push('Investigate root cause of unauthorized changes');\n}\n\nif (summary.results.compliancePercentage < 95) {\n  summary.recommendations.push('URGENT: Compliance below 95% threshold');\n}\n\nconsole.log('Final Report:', JSON.stringify(summary, null, 2));\n\nreturn [{ json: summary }];"
+      },
+      "id": "generate-report",
+      "name": "Generate Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 100],
+      "notes": "Create comprehensive execution summary"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "workbook": {
+          "__rl": true,
+          "value": "workbook-id-here",
+          "mode": "id"
+        },
+        "worksheet": {
+          "__rl": true,
+          "value": "Drift Reports",
+          "mode": "list"
+        },
+        "dataMode": "autoMapInputData",
+        "options": {}
+      },
+      "id": "log-to-excel",
+      "name": "Log to Excel",
+      "type": "n8n-nodes-base.microsoftExcel",
+      "typeVersion": 4.2,
+      "position": [2440, 100],
+      "notes": "Archive results to Excel for historical tracking",
+      "credentials": {
+        "microsoftExcelOAuth2Api": {
+          "id": "3",
+          "name": "Microsoft Excel account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle workflow failure\nconst error = $input.all()[0].json;\n\nconsole.error('Workflow failed:', error);\n\nreturn [{\n  json: {\n    success: false,\n    error: {\n      message: error.error?.message || 'Unknown error',\n      details: error.error?.details || null,\n      timestamp: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "id": "handle-error",
+      "name": "Handle Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400],
+      "notes": "Process and log errors"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "post",
+        "channelId": {
+          "__rl": true,
+          "value": "alerts",
+          "mode": "list",
+          "cachedResultName": "#alerts"
+        },
+        "text": "=⚠️ Gluware Drift Check Failed\n\nError: {{ $json.error.message }}\nTime: {{ $json.error.timestamp }}\n\nPlease investigate immediately.",
+        "options": {}
+      },
+      "id": "alert-on-error",
+      "name": "Alert on Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1120, 400],
+      "notes": "Send alert when workflow fails",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "1",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "rate-limit-delay",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1340, 100],
+      "notes": "Prevent API rate limiting between batch operations",
+      "webhookId": "wait-webhook"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get All Devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Devices": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Filter Active Devices",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Active Devices": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Delay": {
+      "main": [
+        [
+          {
+            "node": "Check Config Drift",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Config Drift": {
+      "main": [
+        [
+          {
+            "node": "Drift Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drift Detected?": {
+      "main": [
+        [
+          {
+            "node": "Log Drift Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        null
+      ]
+    },
+    "Log Drift Details": {
+      "main": [
+        [
+          {
+            "node": "Create Audit Entry",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Audit Entry": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Final Report": {
+      "main": [
+        [
+          {
+            "node": "Log to Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Error": {
+      "main": [
+        [
+          {
+            "node": "Alert on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "any",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "orchestration"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "3",
+      "name": "example"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-orchestrator-example"
+  },
+  "id": "gluware-orchestrator-001",
+  "versionId": "1.0.0"
+}

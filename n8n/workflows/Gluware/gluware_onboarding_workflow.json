@@ -1,0 +1,318 @@
+{
+  "name": "Gluware - Onboarding API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "onboardingId",
+              "value": "={{ $json.onboardingId || '' }}"
+            },
+            {
+              "name": "deviceId",
+              "value": "={{ $json.deviceId || '' }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.status || '' }}"
+            },
+            {
+              "name": "template",
+              "value": "={{ $json.template || '' }}"
+            },
+            {
+              "name": "autoApprove",
+              "value": "={{ $json.autoApprove || 'false' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Device onboarding workflow parameters:\n- method: HTTP method (GET, POST, PUT, DELETE)\n- onboardingId: Specific onboarding job ID\n- deviceId: Target device for onboarding\n- status: Filter by status (pending, in-progress, completed, failed, cancelled)\n- template: Onboarding template to use\n- autoApprove: Auto-approve onboarding steps (true/false)\n- body: JSON body with device details, credentials, config"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build onboarding query string\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.deviceId) queryParts.push(`deviceId=${encodeURIComponent(params.deviceId)}`);\nif (params.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);\nif (params.template) queryParts.push(`template=${encodeURIComponent(params.template)}`);\nif (params.autoApprove === 'true') queryParts.push(`autoApprove=true`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200],
+      "notes": "Constructs onboarding query parameters"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "notes": "Routes based on operation type"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/onboarding{{ $('Build Query String').item.json.onboardingId ? '/' + $('Build Query String').item.json.onboardingId : '' }}{{ $('Build Query String').item.json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-onboarding",
+      "name": "GET Onboarding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "notes": "Retrieves onboarding jobs:\n- All jobs or specific by ID\n- Filter by device, status, or template\n- Returns job progress and logs"
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/onboarding{{ $('Set Input Parameters').item.json.onboardingId ? '/' + $('Set Input Parameters').item.json.onboardingId : '' }}{{ $('Set Input Parameters').item.json.autoApprove === 'true' ? '?autoApprove=true' : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "http-post-put-delete",
+      "name": "POST/PUT/DELETE Onboarding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 400],
+      "notes": "Onboarding operations:\n- POST: Start new onboarding job\n- PUT: Update job (approve step, retry, etc.)\n- DELETE: Cancel onboarding job"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful onboarding response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  // Calculate onboarding statistics if available\n  let stats = null;\n  if (Array.isArray(data)) {\n    stats = {\n      totalJobs: data.length,\n      byStatus: data.reduce((acc, job) => {\n        const status = job.status || 'unknown';\n        acc[status] = (acc[status] || 0) + 1;\n        return acc;\n      }, {}),\n      byTemplate: data.reduce((acc, job) => {\n        const template = job.template || 'none';\n        acc[template] = (acc[template] || 0) + 1;\n        return acc;\n      }, {})\n    };\n  }\n  \n  // Extract progress information if single job\n  let progress = null;\n  if (!Array.isArray(data) && data.steps) {\n    const totalSteps = data.steps.length;\n    const completedSteps = data.steps.filter(s => s.status === 'completed').length;\n    progress = {\n      totalSteps: totalSteps,\n      completedSteps: completedSteps,\n      percentage: totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0,\n      currentStep: data.currentStep || null\n    };\n  }\n  \n  return {\n    json: {\n      success: true,\n      method: params.method,\n      statusCode: data.statusCode || 200,\n      onboardingId: params.onboardingId || null,\n      autoApproved: params.autoApprove === 'true',\n      filters: {\n        deviceId: params.deviceId || null,\n        status: params.status || null,\n        template: params.template || null\n      },\n      statistics: stats,\n      progress: progress,\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'onboarding'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "notes": "Formats onboarding response with progress tracking and statistics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: params.method || 'GET',\n    onboardingId: params.onboardingId || null,\n    autoApproved: params.autoApprove === 'true',\n    error: {\n      message: error.message || 'Onboarding operation failed',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null,\n      failedStep: error.failedStep || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'onboarding'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500],
+      "notes": "Formats error with failed step information if applicable"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate onboarding parameters\nconst params = $input.item.json;\nconst errors = [];\nconst validStatuses = ['pending', 'in-progress', 'completed', 'failed', 'cancelled', 'awaiting-approval'];\n\nif (!['GET', 'POST', 'PUT', 'DELETE'].includes(params.method.toUpperCase())) {\n  errors.push('Invalid HTTP method');\n}\n\nif (['PUT', 'DELETE'].includes(params.method.toUpperCase()) && !params.onboardingId) {\n  errors.push('onboardingId is required for PUT and DELETE operations');\n}\n\nif (params.status && !validStatuses.includes(params.status.toLowerCase())) {\n  errors.push(`Invalid status. Valid statuses: ${validStatuses.join(', ')}`);\n}\n\nif (params.autoApprove && !['true', 'false'].includes(params.autoApprove.toLowerCase())) {\n  errors.push('autoApprove must be true or false');\n}\n\nif (['POST', 'PUT'].includes(params.method.toUpperCase())) {\n  try {\n    const body = JSON.parse(params.body);\n    \n    if (params.method === 'POST') {\n      // Validate required fields for new onboarding job\n      if (!body.deviceIp && !body.deviceHostname) {\n        errors.push('Either deviceIp or deviceHostname is required for POST operation');\n      }\n      if (!body.credentials) {\n        errors.push('credentials object is required for POST operation');\n      } else {\n        if (!body.credentials.username) {\n          errors.push('credentials.username is required');\n        }\n        if (!body.credentials.password && !body.credentials.sshKey) {\n          errors.push('Either credentials.password or credentials.sshKey is required');\n        }\n      }\n      if (body.template && typeof body.template !== 'string') {\n        errors.push('template must be a string');\n      }\n    }\n    \n    if (params.method === 'PUT') {\n      // Validate update operation\n      if (!body.action) {\n        errors.push('action is required in body for PUT operation (approve, retry, pause, resume)');\n      } else if (!['approve', 'retry', 'pause', 'resume'].includes(body.action.toLowerCase())) {\n        errors.push('Invalid action. Must be: approve, retry, pause, or resume');\n      }\n    }\n  } catch (e) {\n    errors.push('Invalid JSON body');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500],
+      "notes": "Validates onboarding parameters, credentials, and required fields"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET Onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT/DELETE Onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Onboarding": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT/DELETE Onboarding": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-onboarding-workflow"
+  },
+  "id": "gluware-onboarding-001",
+  "versionId": "1.0.0"
+}

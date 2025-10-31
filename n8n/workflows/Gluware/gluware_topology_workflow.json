@@ -1,0 +1,230 @@
+{
+  "name": "Gluware - Topology API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "topologyId",
+              "value": "={{ $json.topologyId || '' }}"
+            },
+            {
+              "name": "siteId",
+              "value": "={{ $json.siteId || '' }}"
+            },
+            {
+              "name": "deviceId",
+              "value": "={{ $json.deviceId || '' }}"
+            },
+            {
+              "name": "depth",
+              "value": "={{ $json.depth || '2' }}"
+            },
+            {
+              "name": "includeLinks",
+              "value": "={{ $json.includeLinks || 'true' }}"
+            },
+            {
+              "name": "format",
+              "value": "={{ $json.format || 'json' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Network topology query parameters:\n- method: HTTP method (GET)\n- topologyId: Specific topology snapshot ID\n- siteId: Filter topology by site\n- deviceId: Get topology centered on device\n- depth: Topology depth/hop count (1-5)\n- includeLinks: Include link details (true/false)\n- format: Response format (json, graphml, cytoscape)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build topology query string\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.siteId) queryParts.push(`siteId=${encodeURIComponent(params.siteId)}`);\nif (params.deviceId) queryParts.push(`deviceId=${encodeURIComponent(params.deviceId)}`);\nif (params.depth) queryParts.push(`depth=${params.depth}`);\nif (params.includeLinks) queryParts.push(`includeLinks=${params.includeLinks}`);\nif (params.format) queryParts.push(`format=${params.format}`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Constructs topology query parameters"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/topology{{ $('Build Query String').item.json.topologyId ? '/' + $('Build Query String').item.json.topologyId : '' }}{{ $('Build Query String').item.json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "={{ $('Build Query String').item.json.format === 'graphml' ? 'application/xml' : $('Build Query String').item.json.format === 'cytoscape' ? 'application/json' : 'application/json' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-topology",
+      "name": "GET Topology",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "notes": "Retrieves network topology:\n- Full topology or specific snapshot\n- Filtered by site or device\n- Multiple output formats supported\n- Configurable depth and link inclusion"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format topology response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  // Calculate topology statistics if available\n  let stats = null;\n  if (data.nodes && data.links) {\n    stats = {\n      nodeCount: Array.isArray(data.nodes) ? data.nodes.length : 0,\n      linkCount: Array.isArray(data.links) ? data.links.length : 0,\n      depth: parseInt(params.depth) || 2\n    };\n  }\n  \n  return {\n    json: {\n      success: true,\n      method: 'GET',\n      statusCode: data.statusCode || 200,\n      topologyId: params.topologyId || null,\n      filters: {\n        siteId: params.siteId || null,\n        deviceId: params.deviceId || null,\n        depth: parseInt(params.depth) || 2,\n        includeLinks: params.includeLinks === 'true'\n      },\n      format: params.format || 'json',\n      statistics: stats,\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'topology'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "notes": "Formats topology response with statistics and metadata"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: 'GET',\n    topologyId: params.topologyId || null,\n    error: {\n      message: error.message || 'Failed to retrieve topology',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    filters: {\n      siteId: params.siteId || null,\n      deviceId: params.deviceId || null,\n      depth: parseInt(params.depth) || 2\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'topology'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500],
+      "notes": "Formats error with query context"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate topology parameters\nconst params = $input.item.json;\nconst errors = [];\nconst validFormats = ['json', 'graphml', 'cytoscape'];\n\nif (params.method && params.method.toUpperCase() !== 'GET') {\n  errors.push('Only GET method is supported for topology queries');\n}\n\nconst depth = parseInt(params.depth);\nif (params.depth && (isNaN(depth) || depth < 1 || depth > 5)) {\n  errors.push('Depth must be between 1 and 5');\n}\n\nif (params.includeLinks && !['true', 'false'].includes(params.includeLinks.toLowerCase())) {\n  errors.push('includeLinks must be true or false');\n}\n\nif (params.format && !validFormats.includes(params.format.toLowerCase())) {\n  errors.push(`Invalid format. Must be one of: ${validFormats.join(', ')}`);\n}\n\nif (params.siteId && params.deviceId) {\n  errors.push('Cannot specify both siteId and deviceId. Choose one filter.');\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500],
+      "notes": "Validates topology query parameters and format options"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "GET Topology",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Topology": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-topology-workflow"
+  },
+  "id": "gluware-topology-001",
+  "versionId": "1.0.0"
+}

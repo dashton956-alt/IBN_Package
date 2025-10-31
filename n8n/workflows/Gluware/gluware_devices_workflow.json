@@ -1,0 +1,287 @@
+{
+  "name": "Gluware - Devices API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "deviceId",
+              "value": "={{ $json.deviceId || '' }}"
+            },
+            {
+              "name": "filters",
+              "value": "={{ $json.filters || '' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Extracts input parameters from parent workflow:\n- method: HTTP method (GET, POST, PUT, DELETE)\n- deviceId: Specific device ID for single device operations\n- filters: Query parameters for filtering (e.g., site=xyz&status=active)\n- body: JSON body for POST/PUT operations"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Routes request based on HTTP method"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/devices{{ $('Set Input Parameters').item.json.deviceId ? '/' + $('Set Input Parameters').item.json.deviceId : '' }}{{ $('Set Input Parameters').item.json.filters ? '?' + $('Set Input Parameters').item.json.filters : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-devices",
+      "name": "GET Devices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200],
+      "notes": "Retrieves device information from Gluware API\n- No deviceId: Returns list of all devices\n- With deviceId: Returns specific device details\n- With filters: Returns filtered device list"
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/devices{{ $('Set Input Parameters').item.json.deviceId ? '/' + $('Set Input Parameters').item.json.deviceId : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-post-put-delete",
+      "name": "POST/PUT/DELETE Devices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 400],
+      "notes": "Handles POST, PUT, DELETE operations:\n- POST: Create new device\n- PUT: Update existing device\n- DELETE: Remove device"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful response\nconst inputData = $input.all();\nconst method = $('Set Input Parameters').item.json.method;\n\nconst output = inputData.map(item => {\n  return {\n    json: {\n      success: true,\n      method: method,\n      statusCode: item.json.statusCode || 200,\n      data: item.json,\n      timestamp: new Date().toISOString(),\n      endpoint: 'devices'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "notes": "Standardizes successful API responses with metadata"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst method = $('Set Input Parameters').item.json.method;\n\nreturn [{\n  json: {\n    success: false,\n    method: method,\n    error: {\n      message: error.message || 'Unknown error occurred',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'devices'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500],
+      "notes": "Standardizes error responses with details"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate required parameters\nconst method = $input.item.json.method || 'GET';\nconst deviceId = $input.item.json.deviceId;\nconst body = $input.item.json.body;\n\n// Validation rules\nconst errors = [];\n\nif (!['GET', 'POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {\n  errors.push('Invalid HTTP method. Must be GET, POST, PUT, or DELETE');\n}\n\nif (['PUT', 'DELETE'].includes(method.toUpperCase()) && !deviceId) {\n  errors.push('deviceId is required for PUT and DELETE operations');\n}\n\nif (['POST', 'PUT'].includes(method.toUpperCase())) {\n  try {\n    JSON.parse(body);\n  } catch (e) {\n    errors.push('Invalid JSON body for POST/PUT operation');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 480],
+      "notes": "Validates input parameters before making API call"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET Devices",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT/DELETE Devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Devices": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT/DELETE Devices": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-devices-workflow"
+  },
+  "id": "gluware-devices-001",
+  "versionId": "1.0.0"
+}

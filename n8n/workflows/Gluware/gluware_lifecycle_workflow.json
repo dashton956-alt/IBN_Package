@@ -1,0 +1,314 @@
+{
+  "name": "Gluware - Lifecycle API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "lifecycleId",
+              "value": "={{ $json.lifecycleId || '' }}"
+            },
+            {
+              "name": "deviceId",
+              "value": "={{ $json.deviceId || '' }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.status || '' }}"
+            },
+            {
+              "name": "stage",
+              "value": "={{ $json.stage || '' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Device lifecycle management parameters:\n- method: HTTP method (GET, POST, PUT, DELETE)\n- lifecycleId: Specific lifecycle record ID\n- deviceId: Filter by device\n- status: Filter by lifecycle status (pending, in-progress, completed, failed)\n- stage: Filter by lifecycle stage (discovery, provisioning, deployment, decommission)\n- body: JSON body for POST/PUT operations"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build query string for lifecycle filters\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.deviceId) queryParts.push(`deviceId=${encodeURIComponent(params.deviceId)}`);\nif (params.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);\nif (params.stage) queryParts.push(`stage=${encodeURIComponent(params.stage)}`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200],
+      "notes": "Constructs query parameters for lifecycle filtering"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "notes": "Routes based on operation type"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/lifecycle{{ $('Build Query String').item.json.lifecycleId ? '/' + $('Build Query String').item.json.lifecycleId : '' }}{{ $('Build Query String').item.json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-lifecycle",
+      "name": "GET Lifecycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "notes": "Retrieves lifecycle information:\n- All lifecycle records or specific by ID\n- Filter by device, status, or stage"
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/lifecycle{{ $('Set Input Parameters').item.json.lifecycleId ? '/' + $('Set Input Parameters').item.json.lifecycleId : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http-post-put-delete",
+      "name": "POST/PUT/DELETE Lifecycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 400],
+      "notes": "Lifecycle operations:\n- POST: Initiate new lifecycle process\n- PUT: Update lifecycle stage/status\n- DELETE: Cancel lifecycle process"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful lifecycle response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  return {\n    json: {\n      success: true,\n      method: params.method,\n      statusCode: data.statusCode || 200,\n      lifecycleId: params.lifecycleId || null,\n      filters: {\n        deviceId: params.deviceId || null,\n        status: params.status || null,\n        stage: params.stage || null\n      },\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'lifecycle'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "notes": "Formats response with lifecycle metadata"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: params.method || 'GET',\n    lifecycleId: params.lifecycleId || null,\n    error: {\n      message: error.message || 'Lifecycle operation failed',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'lifecycle'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500],
+      "notes": "Formats error with operation context"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate lifecycle parameters\nconst params = $input.item.json;\nconst errors = [];\nconst validStatuses = ['pending', 'in-progress', 'completed', 'failed', 'cancelled'];\nconst validStages = ['discovery', 'provisioning', 'deployment', 'configuration', 'testing', 'production', 'decommission'];\n\nif (!['GET', 'POST', 'PUT', 'DELETE'].includes(params.method.toUpperCase())) {\n  errors.push('Invalid HTTP method');\n}\n\nif (['PUT', 'DELETE'].includes(params.method.toUpperCase()) && !params.lifecycleId) {\n  errors.push('lifecycleId is required for PUT and DELETE operations');\n}\n\nif (params.status && !validStatuses.includes(params.status.toLowerCase())) {\n  errors.push(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);\n}\n\nif (params.stage && !validStages.includes(params.stage.toLowerCase())) {\n  errors.push(`Invalid stage. Must be one of: ${validStages.join(', ')}`);\n}\n\nif (['POST', 'PUT'].includes(params.method.toUpperCase())) {\n  try {\n    const body = JSON.parse(params.body);\n    if (params.method === 'POST' && !body.deviceId) {\n      errors.push('deviceId is required in body for POST operation');\n    }\n    if (params.method === 'POST' && !body.stage) {\n      errors.push('stage is required in body for POST operation');\n    }\n  } catch (e) {\n    errors.push('Invalid JSON body');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500],
+      "notes": "Validates lifecycle status, stage, and required fields"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET Lifecycle",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT/DELETE Lifecycle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Lifecycle": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT/DELETE Lifecycle": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-lifecycle-workflow"
+  },
+  "id": "gluware-lifecycle-001",
+  "versionId": "1.0.0"
+}

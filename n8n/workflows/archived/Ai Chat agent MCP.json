@@ -1,0 +1,138 @@
+{
+  "name": "Ai Chat agent MCP",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -800,
+        -200
+      ],
+      "id": "chat-trigger-001",
+      "name": "When_chat_message_received",
+      "webhookId": "mcp-netbox-chat-001"
+    },
+    {
+      "parameters": {
+        "mcpServerUrl": "http://netbox-mcp:8002/mcp",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolMcp",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "mcp-client-001",
+      "name": "NetBox_MCP_Client"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a NetBox Network Assistant. You help users query and manage NetBox data center infrastructure and network information.\n\n**Your Role:**\n- You have access to NetBox via MCP tools\n- Use the available MCP tools to query devices, sites, IP addresses, VLANs, cables, racks, virtual machines, circuits, and other NetBox resources\n- Present data in a clear, formatted way using markdown tables\n- Be helpful and concise\n\n**Response Format:**\n- Start with a summary: \"Found X [items]\"\n- Use **markdown tables** for structured data (name, ID, status, etc.)\n- Highlight important fields with **bold**\n- Keep it concise and readable\n\n**Examples:**\n- User: \"show me all devices\" → Use the appropriate MCP tool to list devices\n- User: \"list IP addresses\" → Use the MCP tool to get IP addresses\n- User: \"what sites do we have\" → Use the MCP tool to list sites\n\nAlways present the data clearly to the user."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -600,
+        -200
+      ],
+      "id": "ai-agent-001",
+      "name": "AI_Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        0
+      ],
+      "id": "gemini-model-001",
+      "name": "Google_Gemini_Chat_Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "M9zdSa5QpMUPJbML",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -600,
+        0
+      ],
+      "id": "memory-001",
+      "name": "Simple_Memory"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When_chat_message_received": {
+      "main": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_MCP_Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google_Gemini_Chat_Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple_Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "mcp-netbox-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "netbox-mcp-workflow",
+  "tags": []
+}

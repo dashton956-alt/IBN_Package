@@ -1,0 +1,88 @@
+@startuml
+hide stereotype
+top to bottom direction
+skinparam backgroundColor #f7f9fb
+skinparam rectangle {
+  BackgroundColor<<NET>> #e8f0ff
+  BackgroundColor<<STACK>> #fff6e6
+  BackgroundColor<<SERV>> #e8ffe8
+  Shadowing false
+}
+
+title POC Network Diagram — Modular Docker Networks (Top→Bottom)
+
+' Docker networks as grouped rectangles
+rectangle "Docker Network: st2-docker_private\n(MGMT - StackStorm)" <<NET>> {
+  component "StackStorm (ST2)\n(st2 services)" as ST2
+  component "Vault (attached)" as Vault
+}
+
+rectangle "Docker Network: netbox-docker_default\n(NetBox stack)" <<STACK>> {
+  component "NetBox (web + workers)" as NetBox
+  component "Postgres" as Postgres
+  component "Redis" as Redis
+}
+
+rectangle "Docker Network: anythingllm_default\n(LLM sandbox)" <<SERV>> {
+  component "AnythingLLM" as LLM
+}
+
+rectangle "Docker Network: withpostgresandworker_default\n(n8n)" <<SERV>> {
+  component "n8n" as n8n
+  component "n8n Postgres/Redis" as n8ndb
+}
+
+rectangle "Docker Network: telemetry_net\n(TELEM)" <<SERV>> {
+  component "Fluentbit / Promtail" as Fluent
+  component "Loki" as Loki
+  component "Prometheus" as Prom
+}
+
+rectangle "Docker Network: gluware_default\n(Gluware VM)" <<SERV>> {
+  component "Gluware Controller (VM)" as Gluware
+}
+
+rectangle "Host / External Services" {
+  component "NTP Server (UDP/123)" as NTP
+  component "Live Devices (SSH/22, HTTPS/443, syslog/514)" as Devices
+}
+
+' Integration connectors (explicitly label how they integrate)
+
+' Communications with ports annotated
+ST2 -right-> NetBox : HTTPS 443 (API)
+ST2 -down-> Vault : HTTPS 8200 (Secrets)
+ST2 -down-> LLM : HTTPS 443 (if attached)
+ST2 -right-> Gluware : HTTPS 443 (Controller API)
+
+NetBox -down-> Fluent : syslog UDP/514 (published)
+Devices -right-> Fluent : syslog UDP/514 (host-facing)
+
+' Device connectivity
+Devices -left-> NetBox : API poll / webhooks (HTTPS 443)
+Devices -left-> Gluware : Device orchestration (SSH 22 / HTTPS 443)
+Devices -down-> NTP : NTP UDP/123
+
+' Telemetry ports
+Fluent -right-> Loki : HTTP 3100
+Prom -right-> AM : HTTP 9093 (alerts)
+Prom -> ST2 : webhook (alert -> ST2)
+
+
+' Annotation: networks are isolated by default; list connection methods
+note left of ST2
+  Notes:
+  - Each stack runs in its own Docker network (modular)
+  - Integrate by: (A) attach container to target network, or
+    (B) publish host ports and communicate via host:port
+  - Prefer attaching only required services to st2-docker_private
+    (e.g., Vault, NetBox API service) to limit blast radius
+end note
+
+legend left
+  |= Method |= Meaning |
+  | Attach | Container joined to multiple Docker networks |
+  | Publish | Service accessible on host ports (host:port) |
+endlegend
+
+@enduml

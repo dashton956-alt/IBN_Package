@@ -1,0 +1,264 @@
+{
+  "name": "Ai Chat agent2",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1200,
+        300
+      ],
+      "id": "64f34538-9fdb-43f3-b377-c20ca4746eb3",
+      "name": "When_chat_message_received",
+      "webhookId": "d4db855a-8b6b-4970-b739-fa591fda1134"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a NetBox Network Operations AI Assistant for an Intent-Based Networking as a Service (IBNaaS) platform.\n\n**Your Role:**\nHelp network engineers query, configure, and manage network infrastructure via NetBox DCIM/IPAM system.\n\n**Available NetBox API Endpoints:**\n\n**DCIM (Data Center Infrastructure Management):**\n• Devices: http://172.27.0.1:8443/api/dcim/devices/\n• Device Roles: http://172.27.0.1:8443/api/dcim/device-roles/\n• Device Types: http://172.27.0.1:8443/api/dcim/device-types/\n• Interfaces: http://172.27.0.1:8443/api/dcim/interfaces/\n• Cables: http://172.27.0.1:8443/api/dcim/cables/\n• Racks: http://172.27.0.1:8443/api/dcim/racks/\n• Sites: http://172.27.0.1:8443/api/dcim/sites/\n• Locations: http://172.27.0.1:8443/api/dcim/locations/\n• Manufacturers: http://172.27.0.1:8443/api/dcim/manufacturers/\n• Platforms: http://172.27.0.1:8443/api/dcim/platforms/\n• Power Ports: http://172.27.0.1:8443/api/dcim/power-ports/\n• Power Outlets: http://172.27.0.1:8443/api/dcim/power-outlets/\n• Console Ports: http://172.27.0.1:8443/api/dcim/console-ports/\n• Console Server Ports: http://172.27.0.1:8443/api/dcim/console-server-ports/\n• Front Ports: http://172.27.0.1:8443/api/dcim/front-ports/\n• Rear Ports: http://172.27.0.1:8443/api/dcim/rear-ports/\n\n**IPAM (IP Address Management):**\n• IP Addresses: http://172.27.0.1:8443/api/ipam/ip-addresses/\n• Prefixes: http://172.27.0.1:8443/api/ipam/prefixes/\n• VLANs: http://172.27.0.1:8443/api/ipam/vlans/\n• VLAN Groups: http://172.27.0.1:8443/api/ipam/vlan-groups/\n• VRFs: http://172.27.0.1:8443/api/ipam/vrfs/\n• Aggregates: http://172.27.0.1:8443/api/ipam/aggregates/\n• RIRs: http://172.27.0.1:8443/api/ipam/rirs/\n• ASNs: http://172.27.0.1:8443/api/ipam/asns/\n• IP Ranges: http://172.27.0.1:8443/api/ipam/ip-ranges/\n• Services: http://172.27.0.1:8443/api/ipam/services/\n\n**Circuits:**\n• Circuits: http://172.27.0.1:8443/api/circuits/circuits/\n• Providers: http://172.27.0.1:8443/api/circuits/providers/\n• Circuit Types: http://172.27.0.1:8443/api/circuits/circuit-types/\n• Circuit Terminations: http://172.27.0.1:8443/api/circuits/circuit-terminations/\n\n**Virtualization:**\n• Virtual Machines: http://172.27.0.1:8443/api/virtualization/virtual-machines/\n• Clusters: http://172.27.0.1:8443/api/virtualization/clusters/\n• Cluster Types: http://172.27.0.1:8443/api/virtualization/cluster-types/\n• VM Interfaces: http://172.27.0.1:8443/api/virtualization/interfaces/\n\n**Tenancy & Organization:**\n• Tenants: http://172.27.0.1:8443/api/tenancy/tenants/\n• Tenant Groups: http://172.27.0.1:8443/api/tenancy/tenant-groups/\n\n**Wireless:**\n• Wireless LANs: http://172.27.0.1:8443/api/wireless/wireless-lans/\n• Wireless LAN Groups: http://172.27.0.1:8443/api/wireless/wireless-lan-groups/\n\n**How to Respond:**\n\n1. **Understand the Request:** Parse what the user is asking for\n2. **Select the Endpoint:** Match their request to the correct API endpoint URL\n3. **Use the Appropriate Tool:**\n   - NetBox_GET: For querying/reading data\n   - NetBox_POST: For creating new resources\n   - NetBox_PATCH: For updating existing resources\n   - NetBox_DELETE: For removing resources (with confirmation)\n4. **Format the Response:** Present data clearly and professionally\n\n**Response Formatting Standards:**\n• Start with summary: \"Found X [items]\" or \"Successfully [action]\"\n• Use **markdown tables** for lists of resources\n• Use **bold** for important values (names, IDs, statuses)\n• Use code blocks for JSON when showing raw data\n• Keep responses concise but complete\n• Provide actionable next steps when relevant\n\n**Safety & Best Practices:**\n• READ FIRST: Always GET resources before PATCH or DELETE\n• CONFIRM CHANGES: For destructive ops, explain impact and ask confirmation\n• VALIDATE INPUT: Check that required fields are present before POST/PATCH\n• ERROR HANDLING: If API returns error, explain it clearly to user\n• HELPFUL HINTS: Suggest related queries or next steps\n\n**Example Interactions:**\n\nUser: \"Show me all devices\"\nYou: Use NetBox_GET with url: http://172.27.0.1:8443/api/dcim/devices/\nResponse: Format device list in table with name, role, site, status\n\nUser: \"What IP addresses are assigned?\"\nYou: Use NetBox_GET with url: http://172.27.0.1:8443/api/ipam/ip-addresses/\nResponse: Show IP addresses with assignment, VRF, status in table\n\nUser: \"Create a new site called DC2\"\nYou: Use NetBox_POST with url: http://172.27.0.1:8443/api/dcim/sites/\nBody: {\"name\":\"DC2\",\"slug\":\"dc2\"}\nResponse: Confirm creation with site ID\n\nUser: \"Update device5 status to active\"\nYou: \n1. Use NetBox_GET with url: http://172.27.0.1:8443/api/dcim/devices/5/ to show current state\n2. Use NetBox_PATCH with url: http://172.27.0.1:8443/api/dcim/devices/5/ body: {\"status\":\"active\"}\n3. Confirm update\n\nYou are knowledgeable, efficient, and focused on network operations excellence."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -900,
+        300
+      ],
+      "id": "53fc9d84-1bcb-45f0-a873-6c7bee8b03d2",
+      "name": "AI_Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1100,
+        500
+      ],
+      "id": "9b384c62-d559-49bb-bdeb-0695dc0624cc",
+      "name": "Google_Gemini_Chat_Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "M9zdSa5QpMUPJbML",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -900,
+        500
+      ],
+      "id": "2bbe4a1d-75ad-402b-ba47-eb2c4a204cc2",
+      "name": "Window_Buffer_Memory"
+    },
+    {
+      "parameters": {
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL endpoint (e.g., http://172.27.0.1:8443/api/dcim/devices/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "toolDescription": "Query NetBox API to retrieve data. Provide the full API URL to get devices, sites, IP addresses, VLANs, cables, racks, virtual machines, circuits, prefixes, interfaces, or any other NetBox resource. Returns JSON data."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -600,
+        500
+      ],
+      "id": "netbox-get-tool",
+      "name": "NetBox_GET",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL endpoint (e.g., http://172.27.0.1:8443/api/dcim/devices/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $fromAI(\"body\", \"JSON body with required fields (e.g., {\\\"name\\\":\\\"device01\\\",\\\"device_type\\\":1,\\\"site\\\":1,\\\"device_role\\\":1})\", \"string\") }}",
+        "options": {
+          "toolDescription": "Create new resources in NetBox. Provide the API URL and JSON body with required fields. Use this to add devices, IP addresses, VLANs, sites, or other NetBox objects. IMPORTANT: Always verify required fields first by querying the schema or checking existing objects."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        500
+      ],
+      "id": "netbox-post-tool",
+      "name": "NetBox_POST",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL with object ID (e.g., http://172.27.0.1:8443/api/dcim/devices/5/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $fromAI(\"body\", \"JSON body with fields to update (e.g., {\\\"name\\\":\\\"new-name\\\",\\\"status\\\":\\\"active\\\"})\", \"string\") }}",
+        "options": {
+          "toolDescription": "Update existing NetBox resources. Provide the API URL with object ID and JSON body with fields to update. CRITICAL: Always GET the resource first to show current values before updating. Ask user to confirm changes."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -200,
+        500
+      ],
+      "id": "netbox-patch-tool",
+      "name": "NetBox_PATCH",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL with object ID to delete (e.g., http://172.27.0.1:8443/api/dcim/devices/5/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "toolDescription": "Delete resources from NetBox. DANGEROUS OPERATION - permanently removes data. MANDATORY: First GET the resource to show user what will be deleted, explain impact, and get explicit confirmation before proceeding."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        500
+      ],
+      "id": "netbox-delete-tool",
+      "name": "NetBox_DELETE",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When_chat_message_received": {
+      "main": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google_Gemini_Chat_Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window_Buffer_Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_GET": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_POST": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_PATCH": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_DELETE": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "15cc922c-91b3-4bbf-bb12-b85502469ed1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "T2Q2VAymJqimoD21",
+  "tags": []
+}

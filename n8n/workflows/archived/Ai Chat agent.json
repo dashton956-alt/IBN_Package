@@ -1,0 +1,948 @@
+{
+  "name": "Ai Chat agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1168,
+        -256
+      ],
+      "id": "65fe5335-d846-432b-a523-374b2914ca96",
+      "name": "When chat message received",
+      "webhookId": "d4db855a-8b6b-4970-b739-fa591fda1134"
+    },
+    {
+      "parameters": {
+        "url": "=http://gluware-api:8080/api/devices",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -640,
+        224
+      ],
+      "id": "71cd1d05-09fa-49b4-bf51-64d8c94d13f3",
+      "name": "Gluware_Get_Devices"
+    },
+    {
+      "parameters": {
+        "url": "=http://batfish:9996/v2/snapshots"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -1136,
+        224
+      ],
+      "id": "23a95622-219a-4493-9d6e-652f76c7127e",
+      "name": "Batfish_List_Snapshots"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://batfish:9996/v2/questions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\"snapshot\": \"production\", \"question\": \"bgpSessionStatus\"} }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -1264,
+        224
+      ],
+      "id": "ebc31735-f054-4337-94a9-9515a2a66158",
+      "name": "Batfish_Run_Query"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:5678/api/v1/workflows",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "n8nApi"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        208
+      ],
+      "id": "8366c831-ee36-47a6-8115-72d383776d57",
+      "name": "n8n_List_Workflows",
+      "credentials": {
+        "n8nApi": {
+          "id": "SPG6EgJq3LOUKotZ",
+          "name": "n8n account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:5678/api/v1/workflows/WORKFLOW_ID_HERE/activate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "n8nApi"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -464,
+        208
+      ],
+      "id": "1d5bbe34-e3a9-466d-8ed7-1fb865e8c02e",
+      "name": "n8n_Execute_Workflow",
+      "credentials": {
+        "n8nApi": {
+          "id": "SPG6EgJq3LOUKotZ",
+          "name": "n8n account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are an expert Network Operations AI assistant for an Intent-Based Networking as a Service (IBNaaS) platform.\n\n**Your Role:**\n- Help network engineers query, configure, and troubleshoot network infrastructure\n- Provide accurate information from NetBox (DCIM/IPAM), Batfish (network validation), Gluware (orchestration), and n8n workflows\n- Execute network operations safely and confirm destructive actions before proceeding\n\n**Available Systems:**\n- **NetBox**: Complete network inventory (devices, interfaces, IPs, cables, racks, circuits, VLANs, prefixes)\n- **Batfish**: Network configuration validation and analysis\n- **Gluware**: Network device orchestration and automation\n- **n8n**: Workflow automation and execution\n- **StackStorm**: Event-driven automation (coming soon)\n\n**Guidelines:**\n1. Always verify data before making changes (GET before PATCH/DELETE)\n2. For destructive operations (DELETE, PATCH), explain what will happen and ask for confirmation\n3. Use specific tools when available (e.g., \"List all devices in NetBox\" tool) before generic HTTP requests\n4. When using generic HTTP tools, construct proper NetBox API URLs: http://172.27.0.1:8443/api/[category]/[resource]/\n5. Provide clear, concise responses with relevant data formatted in tables or lists\n6. If you encounter errors, check the API endpoint structure using the Help tool first\n7. For complex queries, break them down into multiple tool calls\n\n**Response Format:**\n- Use markdown tables for structured data\n- Highlight important information with **bold**\n- Use code blocks for JSON payloads or API responses\n- Provide actionable next steps when relevant\n\nYou are knowledgeable, helpful, and focused on network operations efficiency."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -576,
+        -256
+      ],
+      "id": "53dd60cd-3409-461a-a48b-f28946ea633f",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -720,
+        -32
+      ],
+      "id": "6744910c-d785-438d-9f57-c16ccf61a231",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        -32
+      ],
+      "id": "d1c3558e-9425-453c-a96b-190eecf18563",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "M9zdSa5QpMUPJbML",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "sites",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -160
+      ],
+      "id": "c7b56d02-4096-4dd3-a50b-a9f30b8e02a4",
+      "name": "NetBox_List_Sites",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Netbox actions\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "height": 784,
+        "width": 544
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -240
+      ],
+      "id": "de54f7af-9b92-4712-b61f-f772b1b1d4dd",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Batfish\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "height": 400,
+        "width": 416
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1344,
+        144
+      ],
+      "id": "359faea7-16e8-41b2-81c9-a210556b4587",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "N8N\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "height": 400,
+        "width": 448
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -496,
+        144
+      ],
+      "id": "bdf96a0b-0c6f-4809-92c4-e8d069b0463c",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Gluware\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "height": 400,
+        "width": 384
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        144
+      ],
+      "id": "681b9d9e-f1e9-4158-a243-48a9c4959afe",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        96,
+        384
+      ],
+      "id": "a2a35214-a1e7-458f-8e18-f24a526482aa",
+      "name": "NetBox_List_Devices",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "deviceRoles",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        240,
+        384
+      ],
+      "id": "756aa222-9adb-4140-b129-3cd29dcf0e0b",
+      "name": "NetBox_List_Device_Roles",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "deviceTypes",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        400,
+        384
+      ],
+      "id": "db3f775c-f9dd-40d2-b4c0-2d687724f969",
+      "name": "NetBox_List_Device_Types",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "interfaces",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        96,
+        240
+      ],
+      "id": "e8f12345-abcd-4321-9876-543210fedcba",
+      "name": "NetBox_List_Interfaces",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ipAddresses",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        240,
+        240
+      ],
+      "id": "f9a23456-bcde-5432-8765-432109fedcba",
+      "name": "NetBox_List_IP_Addresses",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "prefixes",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        400,
+        240
+      ],
+      "id": "a1b34567-cdef-6543-7654-321098fedcba",
+      "name": "NetBox_List_Prefixes",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "vlans",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        96,
+        96
+      ],
+      "id": "b2c45678-defa-7654-6543-210987fedcba",
+      "name": "NetBox_List_VLANs",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "cables",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        240,
+        96
+      ],
+      "id": "c3d56789-efab-8765-5432-109876fedcba",
+      "name": "NetBox_List_Cables",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "racks",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        400,
+        96
+      ],
+      "id": "d4e67890-fabc-9876-4321-098765fedcba",
+      "name": "NetBox_List_Racks",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "virtualMachines",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        96,
+        -32
+      ],
+      "id": "e5f78901-abcd-0987-3210-987654fedcba",
+      "name": "NetBox_List_Virtual_Machines",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "circuits",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -32
+      ],
+      "id": "f6a89012-bcde-1098-2109-876543fedcba",
+      "name": "NetBox_List_Circuits",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "providers",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -32
+      ],
+      "id": "a7b90123-cdef-2109-1098-765432fedcba",
+      "name": "NetBox_List_Providers",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "tenants",
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-netbox.netBoxTool",
+      "typeVersion": 1,
+      "position": [
+        16,
+        -160
+      ],
+      "id": "b8c01234-defa-3210-0987-654321fedcba",
+      "name": "NetBox_List_Tenants",
+      "credentials": {
+        "netBoxApi": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL endpoint (e.g., http://172.27.0.1:8443/api/dcim/devices/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "toolDescription": "Retrieve data from any NetBox API endpoint using GET request. Use this to query specific NetBox resources not covered by other tools. Requires the full API URL starting with http://172.27.0.1:8443/api/"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        18,
+        -160
+      ],
+      "id": "http-get-netbox-001",
+      "name": "NetBox_API_GET",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL endpoint (e.g., http://172.27.0.1:8443/api/dcim/devices/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $fromAI(\"body\", \"JSON body for creating NetBox resources (e.g., {\\\"name\\\":\\\"device01\\\",\\\"device_type\\\":1,\\\"site\\\":1,\\\"device_role\\\":1})\", \"string\") }}",
+        "options": {
+          "toolDescription": "Create new resources in NetBox using POST request. Use this to add devices, IP addresses, VLANs, or any other NetBox objects. Requires the full API URL and JSON body with required fields. Always verify required fields first using the Help tool."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        20,
+        -160
+      ],
+      "id": "http-post-netbox-002",
+      "name": "NetBox_API_POST",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL endpoint with object ID (e.g., http://172.27.0.1:8443/api/dcim/devices/1/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $fromAI(\"body\", \"JSON body with fields to update (e.g., {\\\"name\\\":\\\"new-name\\\",\\\"status\\\":\\\"active\\\"})\", \"string\") }}",
+        "options": {
+          "toolDescription": "Update existing NetBox resources using PATCH request. Use this to modify device properties, change IP addresses, update statuses, etc. Requires the full API URL with object ID and JSON body with only the fields to update. IMPORTANT: Always GET the resource first to verify it exists and see current values before updating."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        22,
+        -160
+      ],
+      "id": "http-patch-netbox-003",
+      "name": "NetBox_API_PATCH",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $fromAI(\"url\", \"The full NetBox API URL endpoint with object ID to delete (e.g., http://172.27.0.1:8443/api/dcim/devices/1/)\", \"string\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "toolDescription": "Delete resources from NetBox using DELETE request. DANGEROUS OPERATION - this permanently removes data. Always GET the resource first to show the user what will be deleted, explain the impact, and ask for explicit confirmation before proceeding. Requires the full API URL with object ID."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        24,
+        -160
+      ],
+      "id": "http-delete-netbox-004",
+      "name": "NetBox_API_DELETE",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://172.27.0.1:8443/api/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "toolDescription": "Discover all available NetBox API endpoints and their URLs. Use this when you need to find the correct API endpoint for a specific resource type or when the user asks what resources are available in NetBox. Returns a JSON object with all API categories (dcim, ipam, circuits, virtualization, etc.) and their endpoint URLs."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        26,
+        -160
+      ],
+      "id": "netbox-help-api-005",
+      "name": "NetBox_API_Help",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iSGi9vEzxYq7DoOs",
+          "name": "NetBox account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gluware_Get_Devices": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batfish_List_Snapshots": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batfish_Run_Query": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "n8n_List_Workflows": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "n8n_Execute_Workflow": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Sites": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Devices": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Device_Roles": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Device_Types": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Interfaces": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_IP_Addresses": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Prefixes": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_VLANs": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Cables": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Racks": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Virtual_Machines": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Circuits": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Providers": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_List_Tenants": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_API_GET": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_API_POST": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_API_PATCH": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_API_DELETE": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox_API_Help": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7b3e6519-d5af-423a-b5ee-4554650689db",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "IH9uGEhWQ2vyEjg5",
+  "tags": []
+}

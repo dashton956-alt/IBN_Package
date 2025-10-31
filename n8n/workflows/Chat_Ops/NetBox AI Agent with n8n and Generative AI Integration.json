@@ -1,0 +1,1134 @@
+{
+  "name": "NetBox AI Agent with n8n and Generative AI Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "={{ $json.output.response_type }}",
+        "url": "=http://localhost:8000/api{{ $json.output.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.output.details }}",
+        "options": {}
+      },
+      "id": "f146fe39-1dab-401e-b0ef-35ebed11f716",
+      "name": "HTTP Request1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1088,
+        896
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "This is NetBox API Documentation - read the API schema and documentation from here",
+        "url": "http://loxalhost:8000/api/schema/swagger-ui/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "3ac11858-98f5-4265-8167-64c80484df9e",
+      "name": "NetBox API Documentation",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "position": [
+        -576,
+        1040
+      ],
+      "typeVersion": 1.1,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "prompt": "Instructions:\n--------------\n{instructions}\n--------------\nCompletion:\n--------------\n{completion}\n--------------\n\nAbove, the Completion did not satisfy the constraints given in the Instructions.\nError:\n--------------\n{error}\n--------------\n\nPlease try again. Please only respond with an answer that satisfies the constraints laid out in the Instructions:"
+        }
+      },
+      "id": "4646c271-1a2b-4468-9767-54a174a1de0a",
+      "name": "Auto-fixing Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "position": [
+        -288,
+        1136
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash-exp",
+        "options": {}
+      },
+      "id": "c6b52e3f-af31-43c3-ac26-dd02e9e5c276",
+      "name": "Google Gemini Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        -368,
+        1440
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "M9zdSa5QpMUPJbML",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/\",\n  \"details\": {\n    \"name\": \"router01\",\n    \"device_type\": 1,\n    \"site\": 2,\n    \"device_role\": 3,\n    \"status\": \"active\"\n  },\n  \"message\": \"Device router01 has been successfully configured to be created at site 2.\"\n}"
+      },
+      "id": "bd06213a-0e5c-4959-9c50-0997b4453bc0",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "position": [
+        -144,
+        1440
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "toolDescription": "This is NetBox DCIM/IPAM system which helps you manage network infrastructure. Query this to get system status, version info, and available endpoints. Base URL: http://localhost:8000/api/",
+        "url": "http://localhost:8000/api/status/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "263204a8-8a19-4b78-b2f0-4a94278b94ef",
+      "name": "NetBox",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "position": [
+        -400,
+        1136
+      ],
+      "typeVersion": 1.1,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "=GET",
+        "url": "={{ $json.output.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "c426ecac-c719-44f0-b7a7-37aba3c3f863",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        768,
+        768
+      ],
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## API Token for NetBox\n** Create API Token ** \n1. Log into NetBox web UI\n2. Navigate to Admin > Users > API Tokens\n3. Click Add Token and generate a new token\n4. Copy the token value\n\n** Add Credentials to n8n ** \n1. Click on Credentials in n8n\n2. Add new Credential and choose Header Auth\n3. Configure Header Auth:\n   - Name: Authorization\n   - Value: Token <your-token-value>\n\nExample:\nIf your token is c3c5858528ea22c0de34639aa7d7cc6bcce1eeb4\nValue: Token c3c5858528ea22c0de34639aa7d7cc6bcce1eeb4\n",
+        "height": 1221.0199187779397,
+        "width": 736.2768017274677
+      },
+      "id": "bee798b2-5a76-495a-8044-ead3aaa48937",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        592,
+        416
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Trigger\nYou can use any trigger as input, a chat, telegram, email etc",
+        "height": 702.0895748933872,
+        "width": 492.990678850593,
+        "color": 6
+      },
+      "id": "03fc0332-8966-43cb-9b99-58b1a33f157c",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1568,
+        960
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash-exp",
+        "options": {}
+      },
+      "id": "9f9c33cf-43a2-434f-a91e-bf659d10fb91",
+      "name": "Google Gemini Chat Model2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        1568,
+        768
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "M9zdSa5QpMUPJbML",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## NetBox Custom AI Agent \nIt uses the intelligence provided to it including the NetBox API Schema, NetBox Status API and NetBox API Documentation.\n\nThe AI Model connected with this is Gemini, you can connect any AI Model by Ollama, OpenAI, Claude etc.\n\nOutput Parser is used to ensure the fixed output structure that can be used for API URL",
+        "height": 1260.380358008782,
+        "width": 789.7678716732242,
+        "color": 5
+      },
+      "id": "0bcdb0dc-21fd-4729-9e12-9a511619099a",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -768,
+        384
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "034d9d99-e489-46e5-845f-59e694c4765e",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "position": [
+        -1008,
+        784
+      ],
+      "webhookId": "63de8c82-04fc-4126-8bbf-b0eb62794d74",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "b12eb428-1825-4856-a7c4-95b7c2407003",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "position": [
+        -1408,
+        1408
+      ],
+      "webhookId": "c86fa48b-ae66-46f2-b438-f156225a5c74",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "id": "7ee51484-43b6-4690-b86e-e430df27ad7d",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "position": [
+        -1408,
+        1056
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "path": "459d848d-72ed-490f-bc48-e5dc60242896",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "54dcd6ac-eb58-4cfb-a9dc-53e8b833c1f9",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -1408,
+        1248
+      ],
+      "webhookId": "459d848d-72ed-490f-bc48-e5dc60242896",
+      "typeVersion": 2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## HTTP methods\nGET\tRetrieve resources\tFetch VM status, list nodes, get logs.\n\nPOST\tCreate or trigger actions\tStart/stop VMs, create backups.\n\nPUT\tUpdate/replace entire resource configuration\tModify VM configurations.\n\nDELETE\tDelete resources\tRemove VMs, delete users, remove files.\n\nOPTIONS\tFetch supported methods for an endpoint\tCheck available operations for an API.\n\nPATCH\tApply partial updates\tUpdate specific fields in VM settings.",
+        "height": 1245.2937736920358,
+        "width": 486.2369951168387,
+        "color": 3
+      },
+      "id": "ae670566-fdc5-4b01-935d-0d47d658672a",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        80,
+        400
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "toolDescription": "Get the NetBox API schema and documentation. This provides detailed information about available API endpoints, data models, field requirements, and response formats.",
+        "url": "http://localhost:8000/api/schema/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "82878d69-537d-419c-8b6e-08c0a8762b45",
+      "name": "NetBox API Schema",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "position": [
+        -512,
+        1264
+      ],
+      "typeVersion": 1.1,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Access all items from the incoming node\nconst items = $input.all();\n\n// Combine all fields of each item into a single string\nconst combinedData = items.map(item => {\n    const inputData = item.json; // Access the JSON data of the current item\n    \n    // Combine all fields into a single string\n    const combinedField = Object.entries(inputData)\n        .map(([key, value]) => {\n            // Handle objects or arrays by converting them to JSON strings\n            const formattedValue = typeof value === 'object' ? JSON.stringify(value) : value;\n            return `${key}: ${formattedValue}`;\n        })\n        .join(' | '); // Combine key-value pairs as a single string with a delimiter\n\n    // Return the new structure\n    return {\n        json: {\n            combinedField // Only keep the combined field for table representation\n        },\n    };\n});\n\n// Output the combined data\nreturn combinedData;\n"
+      },
+      "id": "61ed1c1d-7008-4c24-97f8-53897523a72d",
+      "name": "Structure Response",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1168,
+        560
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "content": "## NetBox Custom AI Agent (Get)\nThis agent will convert the response from NetBox to meaningful explanation",
+        "height": 517.5348441931358,
+        "width": 895.2529822972874,
+        "color": 5
+      },
+      "id": "be2bc174-00c3-4996-a763-a00a45cff779",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1376,
+        416
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "##  Created or triggered an action on the server.\nResponse will come back here",
+        "height": 712.4591709572671,
+        "width": 900.3261837471116,
+        "color": 5
+      },
+      "id": "56be9911-29f4-4b2c-ada2-15ad481c7d86",
+      "name": "Sticky Note5",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1376,
+        960
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Access the 'data' field from the input\nlet rawData = $json[\"data\"];\n\n// Split the string by colon (:) to extract parts\nlet parts = rawData.split(\":\");\n\n// Create an object with the extracted parts\nreturn {\n  upid: parts[0],       // UPID\n  node: parts[1],       // Node (e.g., psb1)\n  processID: parts[2],  // Process ID\n  taskID: parts[3],     // Task ID\n  timestamp: parts[4],  // Timestamp\n  operation: parts[5],  // Operation (e.g., aptupdate)\n  user: parts[7]        // User (e.g., root@pam!n8n)\n};\n"
+      },
+      "id": "7724e201-029c-4b6c-b8ed-5a6126a05b5e",
+      "name": "Structure Response from NetBox",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1808,
+        1216
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract required fields from the input\nlet node = $json[\"node\"] || \"unknown node\";\nlet operation = $json[\"operation\"] || \"unknown operation\";\nlet user = $json[\"user\"] || \"unknown user\";\nlet rawTimestamp = $json[\"timestamp\"] || \"unknown timestamp\";\n\n// Convert timestamp to a readable format\nlet readableTimestamp = \"Invalid timestamp\";\ntry {\n  let timestamp = parseInt(rawTimestamp, 16) * 1000; // Convert hex to milliseconds\n  readableTimestamp = new Date(timestamp).toLocaleString();\n} catch (error) {\n  readableTimestamp = \"Unable to parse timestamp\";\n}\n\n// Construct the simple message\nlet message = `The operation '${operation}' was executed successfully on node '${node}' by user '${user}' at '${readableTimestamp}'.`;\n\nreturn {\n  message: message\n};\n"
+      },
+      "id": "4048fefa-14e5-4a83-8f18-2b2aa6ac9588",
+      "name": "Format Response and Hide Sensitive Data",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2080,
+        1216
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "da8ce97e-70bf-42a4-981c-e2133bcee24a",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.output.details }}",
+              "rightValue": ""
+            },
+            {
+              "id": "d7052c40-9a43-452e-901c-6c8fd0122e5f",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.output.details }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ae5f748d-5bc9-42ce-8f64-4e5613f16810",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        752,
+        1008
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "method": "=POST",
+        "url": "=http://localhost:8000/api{{ $json.output.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "54530e80-17c2-4845-9a83-f346357082dd",
+      "name": "HTTP Request2",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1088,
+        1104
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "2e4272bf-afea-4684-aba8-b67d9d1b8d17",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "position": [
+        1520,
+        1056
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=http://localhost:8000/api{{ $json.output.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fb6c68b0-b0fb-476b-8bd0-1128436e9105",
+      "name": "HTTP Request3",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1088,
+        1280
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash-exp",
+        "options": {}
+      },
+      "id": "981dd443-30f6-4152-b4e3-c4c39fb530cd",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        -736,
+        1120
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "M9zdSa5QpMUPJbML",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "=You are a are a Proxmox Information Output Expert who will provide the summary of the information generated about proxmox. Here is the information about proxmox : from url{{ $('AI Agent').item.json.output.properties.url.pattern }} {{ $json.combinedField }}",
+        "options": {}
+      },
+      "id": "4002a859-1a65-4ed3-bd8c-bfdeefab0c8e",
+      "name": "AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        1552,
+        560
+      ],
+      "typeVersion": 1.7
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "da8ce97e-70bf-42a4-981c-e2133bcee24a",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.output.details }}",
+              "rightValue": ""
+            },
+            {
+              "id": "d7052c40-9a43-452e-901c-6c8fd0122e5f",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.output.details }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "d8836fb2-9db4-44f7-b9d1-7ec635a609fc",
+      "name": "If1",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        768,
+        1200
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=http://localhost:8000/api{{ $json.output.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "a1e11af1-25f4-435b-a67b-016664e3e6cb",
+      "name": "HTTP Request4",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1088,
+        1456
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "16e9e067-609e-4093-845e-dbc2990e8c3b",
+      "name": "Merge1",
+      "type": "n8n-nodes-base.merge",
+      "position": [
+        1552,
+        1344
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "agent": "reActAgent",
+        "promptType": "define",
+        "text": "=You are a NetBox AI Agent expert designed to generate API commands based on user input.\nThis is NetBox DCIM/IPAM system which will help you manage network infrastructure, IP addresses, devices, sites, and network documentation.\n\n**NetBox API Base URL:** http://localhost:8000/api/\n\n**Authentication:** All requests require Authorization header with token: Token c3c5858528ea22c0de34639aa7d7cc6bcce1eeb4\n\nYour objectives are:\n\n### **1. Understand User Intent**\n- Parse user requests related to NetBox operations (devices, sites, IPs, VLANs, circuits, racks, etc.).\n- Accurately interpret intent to generate valid NetBox API commands.\n- Understand DCIM (Data Center Infrastructure Management) and IPAM (IP Address Management) operations.\n\n### **2. Refer to NetBox API Resources**\nAvailable API endpoints organized by category:\n\n**DCIM (Data Center Infrastructure):**\n- Devices: /dcim/devices/\n- Device Roles: /dcim/device-roles/\n- Device Types: /dcim/device-types/\n- Interfaces: /dcim/interfaces/\n- Cables: /dcim/cables/\n- Racks: /dcim/racks/\n- Sites: /dcim/sites/\n- Locations: /dcim/locations/\n- Manufacturers: /dcim/manufacturers/\n- Platforms: /dcim/platforms/\n- Power Ports: /dcim/power-ports/\n- Console Ports: /dcim/console-ports/\n\n**IPAM (IP Address Management):**\n- IP Addresses: /ipam/ip-addresses/\n- Prefixes: /ipam/prefixes/\n- VLANs: /ipam/vlans/\n- VLAN Groups: /ipam/vlan-groups/\n- VRFs: /ipam/vrfs/\n- Aggregates: /ipam/aggregates/\n- ASNs: /ipam/asns/\n- Services: /ipam/services/\n\n**Circuits:**\n- Circuits: /circuits/circuits/\n- Providers: /circuits/providers/\n- Circuit Types: /circuits/circuit-types/\n\n**Virtualization:**\n- Virtual Machines: /virtualization/virtual-machines/\n- Clusters: /virtualization/clusters/\n- VM Interfaces: /virtualization/interfaces/\n\n**Tenancy:**\n- Tenants: /tenancy/tenants/\n\n**Wireless:**\n- Wireless LANs: /wireless/wireless-lans/\n\n### **3. Structure Responses**\nEvery response must include:\n- response_type: The HTTP method (e.g., POST, GET, PATCH, DELETE).\n- url: The complete API endpoint URL starting with http://localhost:8000/api/\n- details: The payload for the request (for POST/PATCH). Exclude optional fields if not explicitly defined by the user.\n\n### **4. Validate Inputs**\n- **Mandatory Fields for Common Operations**:\n  - **Create Device**: name, device_type (ID), site (ID), device_role (ID)\n  - **Create Site**: name, slug\n  - **Create IP Address**: address (CIDR format)\n  - **Create VLAN**: vid (VLAN ID), name\n  - **Create Interface**: name, device (ID), type\n  \n- **Missing Fields Response**:\n  If required parameters are missing, respond with:\n  {\n    \"message\": \"Missing required parameters: [list of missing parameters].\",\n    \"hint\": \"Use GET request to query existing objects for IDs\"\n  }\n\n- **Optional Fields**:\n  - Omit fields not provided by the user to leverage NetBox's defaults.\n  - Common optional fields: description, status, tags, comments, custom_fields\n\n### **5. Default Behavior**\n- Default status for most objects is active if not specified.\n- For slug fields (sites, device types, etc.), auto-generate from name if not provided: lowercase, replace spaces with hyphens.\n- IP addresses must be in CIDR notation (e.g., 192.168.1.10/24).\n- VLAN IDs must be between 1-4094.\n\n### **6. Query Operations**\n- **List All**: GET request to base endpoint (e.g., /dcim/devices/)\n- **Filter by Name**: Add ?name=value query parameter\n- **Filter by ID**: GET request to /endpoint/{id}/\n- **Multiple Filters**: Combine with & (e.g., ?site=1&status=active)\n- **Search**: Use ?q=searchterm for text search\n\n### **7. Rules for Outputs**\n- Always respond in strict JSON format:\n  - Start with { and end with }.\n  - Avoid additional information or comments outside JSON.\n  - Include authentication reminder when needed.\n- If input is unrelated to NetBox, respond with:\n  {\n    \"response_type\": \"Invalid\"\n  }\n\n### **8. Examples**\n\n1. Create a Device\nInput: \"Create a device named router01 with device type 1, site 2, and device role 3\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/\",\n  \"details\": {\n    \"name\": \"router01\",\n    \"device_type\": 1,\n    \"site\": 2,\n    \"device_role\": 3,\n    \"status\": \"active\"\n  }\n}\n\n2. Create a Site\nInput: \"Create a site called Data Center 3 with status planned\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/dcim/sites/\",\n  \"details\": {\n    \"name\": \"Data Center 3\",\n    \"slug\": \"data-center-3\",\n    \"status\": \"planned\"\n  }\n}\n\n3. List All Devices\nInput: \"Show me all devices\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/\"\n}\n\n4. Get Specific Device\nInput: \"Get details for device with ID 5\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/5/\"\n}\n\n5. Create IP Address\nInput: \"Create IP address 192.168.1.10/24 with status active and DNS name server01.example.com\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/ipam/ip-addresses/\",\n  \"details\": {\n    \"address\": \"192.168.1.10/24\",\n    \"status\": \"active\",\n    \"dns_name\": \"server01.example.com\"\n  }\n}\n\n6. Create VLAN\nInput: \"Create VLAN 100 named Management at site 1\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/ipam/vlans/\",\n  \"details\": {\n    \"vid\": 100,\n    \"name\": \"Management\",\n    \"site\": 1,\n    \"status\": \"active\"\n  }\n}\n\n7. Update Device Status\nInput: \"Update device 5 status to active\"\nOutput:\n{\n  \"response_type\": \"PATCH\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/5/\",\n  \"details\": {\n    \"status\": \"active\"\n  }\n}\n\n8. Delete Device\nInput: \"Delete device with ID 10\"\nOutput:\n{\n  \"response_type\": \"DELETE\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/10/\"\n}\n\n9. List Devices at Specific Site\nInput: \"List all devices at site ID 2\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/?site_id=2\"\n}\n\n10. Create Interface\nInput: \"Create interface eth0 on device 5 with type 1000base-t\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/dcim/interfaces/\",\n  \"details\": {\n    \"name\": \"eth0\",\n    \"device\": 5,\n    \"type\": \"1000base-t\"\n  }\n}\n\n11. Assign IP to Interface\nInput: \"Create IP 10.0.0.1/24 and assign to interface 15\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/ipam/ip-addresses/\",\n  \"details\": {\n    \"address\": \"10.0.0.1/24\",\n    \"assigned_object_type\": \"dcim.interface\",\n    \"assigned_object_id\": 15,\n    \"status\": \"active\"\n  }\n}\n\n12. Search for Devices\nInput: \"Search for devices with router in the name\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/?q=router\"\n}\n\n13. List All IP Addresses in a Prefix\nInput: \"Show all IP addresses in prefix 10.0.0.0/24\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/ipam/ip-addresses/?parent=10.0.0.0/24\"\n}\n\n14. Create Virtual Machine\nInput: \"Create VM named web-server01 in cluster 1 with 4GB RAM and 2 CPUs\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/virtualization/virtual-machines/\",\n  \"details\": {\n    \"name\": \"web-server01\",\n    \"cluster\": 1,\n    \"memory\": 4096,\n    \"vcpus\": 2,\n    \"status\": \"active\"\n  }\n}\n\n15. Get Device Configuration Context\nInput: \"Get configuration context for device 8\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/8/?include=config_context\"\n}\n\n16. Handle Missing Parameters\nInput: \"Create a device named router02\"\nOutput:\n{\n  \"message\": \"Missing required parameters: [device_type, site, device_role].\",\n  \"hint\": \"Use GET request to query existing objects for IDs\"\n}\n\n17. Invalid Input\nInput: \"Tell me a joke\"\nOutput:\n{\n  \"response_type\": \"Invalid\"\n}\n\n18. Bulk Filter Query\nInput: \"Show me all active devices at site 2 with role router\"\nOutput:\n{\n  \"response_type\": \"GET\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/?site_id=2&role=router&status=active\"\n}\n\n19. Create Prefix\nInput: \"Create prefix 10.0.0.0/24 for site 1 with status active\"\nOutput:\n{\n  \"response_type\": \"POST\",\n  \"url\": \"http://localhost:8000/api/ipam/prefixes/\",\n  \"details\": {\n    \"prefix\": \"10.0.0.0/24\",\n    \"site\": 1,\n    \"status\": \"active\"\n  }\n}\n\n20. Update Multiple Fields\nInput: \"Update device 5 to set status active, name router01-updated, and description Updated router\"\nOutput:\n{\n  \"response_type\": \"PATCH\",\n  \"url\": \"http://localhost:8000/api/dcim/devices/5/\",\n  \"details\": {\n    \"status\": \"active\",\n    \"name\": \"router01-updated\",\n    \"description\": \"Updated router\"\n  }\n}\n\n### **Special Instructions**\n- Output must **always** contain response_type, url and optionally details (for POST/PATCH/PUT)\n- For creating objects, only include fields explicitly mentioned by user - let NetBox use defaults for others\n- Always use complete URLs starting with http://localhost:8000/api/\n- Remember NetBox uses different ID fields: use object IDs (integers) for relationships, not names\n- For PATCH operations, only include fields being updated, not the entire object\n- Status values are typically: active, planned, staged, failed, offline, decommissioned, retired\n\n### **9. Behavior Guidelines**\n- Be concise, precise, and consistent\n- Ensure all generated commands are compatible with NetBox API v4.4.4 requirements\n- Rely on NetBox defaults when user input is incomplete\n- For unknown or unrelated queries, clearly indicate invalid input\n- When users need IDs, suggest they query the relevant endpoint first (GET request)\n- Remind users that authentication token is required for all requests\n- For complex operations, break them down into multiple API calls if needed\n\n### **10. Common NetBox Patterns**\n\n**Pattern: Check Before Create**\n1. GET to check if object exists: /endpoint/?name=value\n2. If count = 0, POST to create\n3. If count > 0, return existing object or suggest PATCH\n\n**Pattern: Update Workflow**\n1. GET object to see current state: /endpoint/{id}/\n2. PATCH with only changed fields: /endpoint/{id}/\n3. Confirm changes with another GET\n\n**Pattern: Delete Workflow**\n1. GET object to show user what will be deleted\n2. Ask for confirmation\n3. DELETE: /endpoint/{id}/\n\n**Pattern: Assign IP to Interface**\n1. Create or find IP address\n2. PATCH IP with assigned_object_type and assigned_object_id\n\nUser Prompt:\nHere is request from user: {{ $json.chatInput }}\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "id": "7c4ac259-3b6a-4494-8542-b9a8e54c02d7",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        -576,
+        784
+      ],
+      "typeVersion": 1.7
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "GET"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "GET"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "e3edd683-b884-4c88-b1ea-d3640141b054",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "POST"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "POST"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "f1e12345-abcd-4567-89ef-123456789abc",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "PATCH"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "PATCH"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "a9c59c0d-001c-4d95-992e-bff2af54eb4a",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "PUT"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Update"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "70bf8cc2-0a43-431c-97c7-a8b4eadb5bd9",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "OPTIONS"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "OPTIONS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "0e43b05b-7f45-40a3-b8aa-180dd8155b08",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "DELETE"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "DELETE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "bd03a24c-a233-4302-a576-1bfe0060c367",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.output.response_type }}",
+                    "rightValue": "Invalid"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "INVALID"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c7f7cfb3-28a9-4e03-90f6-160d20efc9d4",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "position": [
+        240,
+        784
+      ],
+      "typeVersion": 3.2
+    },
+    {
+      "parameters": {
+        "content": "## Trigger\nYou can use any trigger as input, a chat, telegram, email etc\n\nYou can think of any input, even it could be from your cloud platform, your own Web Applicaiton, etc. \n\nPossibilities are limitless.\n\nChat is shown just as example.",
+        "height": 1262.1316376259997,
+        "width": 261.5261328042567,
+        "color": 7
+      },
+      "id": "c93075f4-931d-4396-9254-08f4471a4798",
+      "name": "Sticky Note6",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1040,
+        400
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Developed by Amjid Ali\n\nThank you for using this workflow template. It has taken me countless hours of hard work, research, and dedication to develop, and I sincerely hope it adds value to your work.\n\nIf you find this template helpful, I kindly ask you to consider supporting my efforts. Your support will help me continue improving and creating more valuable resources.\n\nYou can contribute via PayPal here:\n\nhttp://paypal.me/pmptraining\n\nAdditionally, when sharing this template, I would greatly appreciate it if you include my original information to ensure proper credit is given.\n\nThank you for your generosity and support!\nEmail : amjid@amjidali.com\nhttps://linkedin.com/in/amjidali\nhttps://syncbricks.com\nhttps://youtube.com/@syncbricks",
+        "height": 515.4734551650874,
+        "width": 475.27306699862953,
+        "color": 4
+      },
+      "id": "dce2b652-9a3f-4b7c-bc94-24e21933c4ca",
+      "name": "Sticky Note7",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1568,
+        400
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Structure Response from NetBox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Structure Response from NetBox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Structure Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request4": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Structure Response": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structure Response from NetBox": {
+      "main": [
+        [
+          {
+            "node": "Format Response and Hide Sensitive Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox API Documentation": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e687c57c-7f0b-4b15-be8f-52f835ebab9f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "T2Q2VAymJqimoD21",
+  "tags": []
+}

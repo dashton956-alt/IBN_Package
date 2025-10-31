@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - WEBHOOK_TUNNEL_URL=
+      # LocalAI and NetBox targets are configurable via env below
+      - N8N_LOCALAI_URL=http://localai:8080/v1/generate
+      - N8N_NETBOX_URL=http://netbox:8080
+      - N8N_NETBOX_TOKEN=
+      # Turn off basic auth for prototype (enable in production!)
+      - N8N_DISABLE_UI_PROFILE=true
+    ports:
+      - "5678:5678"
+      - "443:5678"
+    volumes:
+      - ./data:/home/node/.n8n
+    networks:
+      - default
+
+networks:
+  default:
+    external: false

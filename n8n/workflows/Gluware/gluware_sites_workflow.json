@@ -1,0 +1,288 @@
+{
+  "name": "Gluware - Sites API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "siteId",
+              "value": "={{ $json.siteId || '' }}"
+            },
+            {
+              "name": "filters",
+              "value": "={{ $json.filters || '' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            },
+            {
+              "name": "includeDevices",
+              "value": "={{ $json.includeDevices || 'false' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Extracts input parameters:\n- method: HTTP method (GET, POST, PUT, DELETE)\n- siteId: Specific site ID for operations\n- filters: Query parameters (e.g., region=NA&status=active)\n- body: JSON body for POST/PUT\n- includeDevices: Include device list in response (true/false)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Routes based on HTTP method"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/sites{{ $('Set Input Parameters').item.json.siteId ? '/' + $('Set Input Parameters').item.json.siteId : '' }}{{ $('Set Input Parameters').item.json.filters || $('Set Input Parameters').item.json.includeDevices === 'true' ? '?' : '' }}{{ $('Set Input Parameters').item.json.filters }}{{ $('Set Input Parameters').item.json.filters && $('Set Input Parameters').item.json.includeDevices === 'true' ? '&' : '' }}{{ $('Set Input Parameters').item.json.includeDevices === 'true' ? 'includeDevices=true' : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-sites",
+      "name": "GET Sites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200],
+      "notes": "Retrieves site information:\n- All sites or specific site by ID\n- Optional device list inclusion\n- Supports filtering by region, status, etc."
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/sites{{ $('Set Input Parameters').item.json.siteId ? '/' + $('Set Input Parameters').item.json.siteId : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-post-put-delete",
+      "name": "POST/PUT/DELETE Sites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 400],
+      "notes": "Handles write operations:\n- POST: Create new site\n- PUT: Update site details\n- DELETE: Remove site"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful response\nconst inputData = $input.all();\nconst method = $('Set Input Parameters').item.json.method;\nconst siteId = $('Set Input Parameters').item.json.siteId;\n\nconst output = inputData.map(item => {\n  return {\n    json: {\n      success: true,\n      method: method,\n      statusCode: item.json.statusCode || 200,\n      siteId: siteId || null,\n      data: item.json,\n      timestamp: new Date().toISOString(),\n      endpoint: 'sites'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "notes": "Standardizes successful responses with metadata"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst method = $('Set Input Parameters').item.json.method;\nconst siteId = $('Set Input Parameters').item.json.siteId;\n\nreturn [{\n  json: {\n    success: false,\n    method: method,\n    siteId: siteId || null,\n    error: {\n      message: error.message || 'Unknown error occurred',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'sites'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500],
+      "notes": "Standardizes error responses"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate input parameters\nconst method = $input.item.json.method || 'GET';\nconst siteId = $input.item.json.siteId;\nconst body = $input.item.json.body;\n\nconst errors = [];\n\nif (!['GET', 'POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {\n  errors.push('Invalid HTTP method');\n}\n\nif (['PUT', 'DELETE'].includes(method.toUpperCase()) && !siteId) {\n  errors.push('siteId is required for PUT and DELETE operations');\n}\n\nif (['POST', 'PUT'].includes(method.toUpperCase())) {\n  try {\n    const parsedBody = JSON.parse(body);\n    if (method === 'POST' && !parsedBody.name) {\n      errors.push('Site name is required for POST operation');\n    }\n  } catch (e) {\n    errors.push('Invalid JSON body');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 480],
+      "notes": "Validates parameters before API call"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET Sites",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT/DELETE Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Sites": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT/DELETE Sites": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-sites-workflow"
+  },
+  "id": "gluware-sites-001",
+  "versionId": "1.0.0"
+}

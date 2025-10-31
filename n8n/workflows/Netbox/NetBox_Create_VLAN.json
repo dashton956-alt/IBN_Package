@@ -1,0 +1,258 @@
+{
+  "name": "NetBox_Create_VLAN",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "schema": [
+            {
+              "name": "vlan_id",
+              "type": "number",
+              "displayName": "VLAN ID",
+              "required": true,
+              "description": "VLAN ID number (1-4094)"
+            },
+            {
+              "name": "vlan_name",
+              "type": "string",
+              "displayName": "VLAN Name",
+              "required": true,
+              "description": "Name of the VLAN"
+            },
+            {
+              "name": "site",
+              "type": "number",
+              "displayName": "Site ID",
+              "required": false,
+              "description": "Site ID where VLAN is used (optional)"
+            },
+            {
+              "name": "vlan_group",
+              "type": "number",
+              "displayName": "VLAN Group ID",
+              "required": false,
+              "description": "VLAN group ID (optional)"
+            },
+            {
+              "name": "status",
+              "type": "string",
+              "displayName": "Status",
+              "required": false,
+              "description": "VLAN status (active, reserved, deprecated) - defaults to active"
+            },
+            {
+              "name": "description",
+              "type": "string",
+              "displayName": "Description",
+              "required": false,
+              "description": "VLAN description"
+            }
+          ]
+        }
+      },
+      "id": "trigger-create-vlan",
+      "typeVersion": 1.1,
+      "name": "When_Called_From_Another_Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://172.27.0.1:8443/api/ipam/vlans/?vid={{ $json.vlan_id }}{{ $json.site ? '&site_id=' + $json.site : '' }}{{ $json.vlan_group ? '&group_id=' + $json.vlan_group : '' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "check-vlan-exists",
+      "name": "Check_VLAN_Exists",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        460,
+        340
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "vlan-count-check",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        340
+      ],
+      "id": "if-vlan-not-exists",
+      "name": "If_VLAN_Not_Exists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $('When_Called_From_Another_Workflow').item.json;\n\nconst body = {\n  vid: inputData.vlan_id,\n  name: inputData.vlan_name,\n  status: inputData.status || 'active'\n};\n\nif (inputData.site) body.site = inputData.site;\nif (inputData.vlan_group) body.group = inputData.vlan_group;\nif (inputData.description) body.description = inputData.description;\n\nreturn { body: JSON.stringify(body) };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        240
+      ],
+      "id": "prepare-vlan-body",
+      "name": "Prepare_VLAN_Body"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.27.0.1:8443/api/ipam/vlans/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "create-vlan",
+      "name": "Create_VLAN",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1120,
+        240
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: true,\n  action: 'created',\n  vlan: $input.item.json\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        240
+      ],
+      "id": "format-success-response",
+      "name": "Format_Success_Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: false,\n  action: 'already_exists',\n  message: `VLAN ${$('When_Called_From_Another_Workflow').item.json.vlan_id} already exists`,\n  existing_vlan: $input.item.json.results[0]\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        440
+      ],
+      "id": "format-exists-response",
+      "name": "Format_Already_Exists_Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When_Called_From_Another_Workflow": {
+      "main": [
+        [
+          {
+            "node": "Check_VLAN_Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check_VLAN_Exists": {
+      "main": [
+        [
+          {
+            "node": "If_VLAN_Not_Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_VLAN_Not_Exists": {
+      "main": [
+        [
+          {
+            "node": "Prepare_VLAN_Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format_Already_Exists_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare_VLAN_Body": {
+      "main": [
+        [
+          {
+            "node": "Create_VLAN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create_VLAN": {
+      "main": [
+        [
+          {
+            "node": "Format_Success_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "netbox-create-vlan-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "netbox-create-vlan",
+  "tags": []
+}

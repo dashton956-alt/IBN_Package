@@ -1,0 +1,421 @@
+name: AI PR Review for Workflows
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workflows/**/*.json'
+      - 'N8N_workflows/**/*.json'
+  
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: number
+      auto_comment:
+        description: 'Automatically post review comment'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+jobs:
+  ai-review:
+    name: AI Workflow Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get PR information
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = context.payload.pull_request?.number || ${{ github.event.inputs.pr_number || 0 }};
+            
+            if (pr_number === 0) {
+              core.setFailed('No PR number available');
+              return;
+            }
+            
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr_number
+            });
+            
+            core.setOutput('pr_number', pr_number);
+            core.setOutput('pr_title', pr.title);
+            core.setOutput('pr_body', pr.body || '');
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('base_sha', pr.base.sha);
+            core.setOutput('changed_files', pr.changed_files);
+            
+            return pr;
+      
+      - name: Check for workflow changes
+        id: check-workflows
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = ${{ steps.pr-info.outputs.pr_number }};
+            
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr_number
+            });
+            
+            const workflowFiles = files.filter(file => 
+              file.filename.endsWith('.json') &&
+              (file.filename.includes('workflow') || 
+               file.filename.startsWith('workflows/') ||
+               file.filename.startsWith('N8N_workflows/')) &&
+              !file.filename.includes('node_modules') &&
+              !file.filename.includes('package')
+            );
+            
+            core.setOutput('has_workflows', workflowFiles.length > 0);
+            core.setOutput('workflow_count', workflowFiles.length);
+            
+            if (workflowFiles.length > 0) {
+              console.log(`Found ${workflowFiles.length} workflow file(s):`);
+              workflowFiles.forEach(f => console.log(`  - ${f.filename} (${f.status})`));
+            } else {
+              console.log('No workflow files changed in this PR');
+            }
+            
+            return workflowFiles;
+      
+      - name: Add pending review comment
+        if: steps.check-workflows.outputs.has_workflows == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = ${{ steps.pr-info.outputs.pr_number }};
+            
+            const comment = await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr_number,
+              body: `## 🤖 AI Workflow Review
+
+⏳ **Status:** Review in progress...
+
+Found ${{ steps.check-workflows.outputs.workflow_count }} workflow file(s) to review. Claude AI is analyzing the changes.
+
+This may take a minute or two.`
+            });
+            
+            core.setOutput('pending_comment_id', comment.data.id);
+      
+      - name: Prepare review payload
+        if: steps.check-workflows.outputs.has_workflows == 'true'
+        id: payload
+        run: |
+          cat > payload.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "pull_request": {
+              "number": ${{ steps.pr-info.outputs.pr_number }},
+              "title": "${{ steps.pr-info.outputs.pr_title }}",
+              "body": $(echo '${{ steps.pr-info.outputs.pr_body }}' | jq -R -s .),
+              "state": "open",
+              "html_url": "${{ github.event.pull_request.html_url }}",
+              "url": "${{ github.event.pull_request.url }}",
+              "head": {
+                "ref": "${{ github.event.pull_request.head.ref }}",
+                "sha": "${{ steps.pr-info.outputs.head_sha }}"
+              },
+              "base": {
+                "ref": "${{ github.event.pull_request.base.ref }}",
+                "sha": "${{ steps.pr-info.outputs.base_sha }}"
+              },
+              "changed_files": ${{ steps.pr-info.outputs.changed_files }},
+              "user": {
+                "login": "${{ github.event.pull_request.user.login }}",
+                "html_url": "${{ github.event.pull_request.user.html_url }}"
+              },
+              "created_at": "${{ github.event.pull_request.created_at }}",
+              "updated_at": "${{ github.event.pull_request.updated_at }}"
+            },
+            "github_token": "${{ secrets.GITHUB_TOKEN }}",
+            "anthropic_api_key": "${{ secrets.ANTHROPIC_API_KEY }}",
+            "auto_comment": ${{ github.event.inputs.auto_comment || true }},
+            "review_depth": "standard",
+            "trigger": {
+              "event": "${{ github.event_name }}",
+              "run_id": "${{ github.run_id }}",
+              "workflow": "${{ github.workflow }}"
+            }
+          }
+          EOF
+          
+          echo "Payload prepared:"
+          cat payload.json | jq '.' || cat payload.json
+      
+      - name: Trigger AI review
+        if: steps.check-workflows.outputs.has_workflows == 'true'
+        id: review
+        run: |
+          echo "Triggering AI review..."
+          
+          response=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @payload.json \
+            "${{ secrets.N8N_WEBHOOK_URL }}/webhook/ai-pr-review" \
+            -w "\n%{http_code}" \
+            -o review-response.json \
+            --max-time 300)
+          
+          http_code=$(echo "$response" | tail -n1)
+          
+          echo "HTTP Status: $http_code"
+          echo "Response:"
+          cat review-response.json | jq '.' || cat review-response.json
+          
+          echo "http_code=$http_code" >> $GITHUB_OUTPUT
+          
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Review completed successfully"
+            
+            # Extract review metadata
+            risk_level=$(jq -r '.review.risk_level // "unknown"' review-response.json)
+            quality_score=$(jq -r '.review.quality_score // "N/A"' review-response.json)
+            approval_status=$(jq -r '.review.approval_status // "COMMENT"' review-response.json)
+            
+            echo "risk_level=$risk_level" >> $GITHUB_OUTPUT
+            echo "quality_score=$quality_score" >> $GITHUB_OUTPUT
+            echo "approval_status=$approval_status" >> $GITHUB_OUTPUT
+            
+            exit 0
+          else
+            echo "❌ Review failed with HTTP $http_code"
+            exit 1
+          fi
+      
+      - name: Upload review response
+        if: always() && steps.check-workflows.outputs.has_workflows == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-response
+          path: review-response.json
+          retention-days: 90
+      
+      - name: Update pending comment
+        if: success() && steps.check-workflows.outputs.has_workflows == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const response = JSON.parse(fs.readFileSync('review-response.json', 'utf8'));
+            const commentId = ${{ steps.pr-info.outputs.pending_comment_id || 0 }};
+            
+            if (commentId > 0 && !response.actions_taken?.comment_posted) {
+              // Update the pending comment if AI didn't post
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: commentId,
+                body: `## 🤖 AI Workflow Review
+
+✅ **Status:** Review completed
+
+**Risk Level:** ${response.review?.risk_level || 'Unknown'}
+**Quality Score:** ${response.review?.quality_score || 'N/A'}/10
+**Recommendation:** ${response.review?.approval_status || 'COMMENT'}
+
+${response.review?.review_text || 'No review text available'}
+
+---
+*Review ID: ${response.metadata?.execution_id}*`
+              });
+            } else if (commentId > 0) {
+              // Delete pending comment if AI posted its own
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: commentId
+              });
+            }
+      
+      - name: Add review summary to step summary
+        if: success() && steps.check-workflows.outputs.has_workflows == 'true'
+        run: |
+          echo "### 🤖 AI Workflow Review Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ steps.pr-info.outputs.pr_number }} - ${{ steps.pr-info.outputs.pr_title }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Risk Level:** ${{ steps.review.outputs.risk_level }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Quality Score:** ${{ steps.review.outputs.quality_score }}/10" >> $GITHUB_STEP_SUMMARY
+          echo "**Approval Status:** ${{ steps.review.outputs.approval_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          cat review-response.json | jq -r '.review.review_summary // "No summary available"' >> $GITHUB_STEP_SUMMARY
+      
+      - name: Set PR labels based on review
+        if: success() && steps.check-workflows.outputs.has_workflows == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = ${{ steps.pr-info.outputs.pr_number }};
+            const riskLevel = '${{ steps.review.outputs.risk_level }}';
+            const qualityScore = parseInt('${{ steps.review.outputs.quality_score }}') || 0;
+            
+            const labels = [];
+            
+            // Risk labels
+            if (riskLevel === 'High') {
+              labels.push('⚠️ high-risk');
+            } else if (riskLevel === 'Medium') {
+              labels.push('⚡ medium-risk');
+            } else if (riskLevel === 'Low') {
+              labels.push('✅ low-risk');
+            }
+            
+            // Quality labels
+            if (qualityScore >= 8) {
+              labels.push('🌟 high-quality');
+            } else if (qualityScore >= 6) {
+              labels.push('👍 good-quality');
+            } else if (qualityScore > 0) {
+              labels.push('🔧 needs-improvement');
+            }
+            
+            // Workflow label
+            labels.push('🤖 ai-reviewed');
+            labels.push('workflow');
+            
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr_number,
+                labels: labels
+              });
+            }
+      
+      - name: Handle no workflow changes
+        if: steps.check-workflows.outputs.has_workflows != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = context.payload.pull_request?.number;
+            
+            if (pr_number) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr_number,
+                body: `## 🤖 AI Workflow Review
+
+ℹ️ **Status:** Skipped
+
+No workflow files (*.json) were changed in this PR. AI review is only triggered for n8n workflow changes.`
+              });
+            }
+            
+            console.log('No workflow changes detected, skipping review');
+      
+      - name: Handle review failure
+        if: failure() && steps.check-workflows.outputs.has_workflows == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = ${{ steps.pr-info.outputs.pr_number }};
+            const commentId = ${{ steps.pr-info.outputs.pending_comment_id || 0 }};
+            
+            let errorMessage = 'Unknown error occurred during review';
+            
+            try {
+              const fs = require('fs');
+              if (fs.existsSync('review-response.json')) {
+                const response = JSON.parse(fs.readFileSync('review-response.json', 'utf8'));
+                errorMessage = response.error || response.message || errorMessage;
+              }
+            } catch (e) {
+              console.log('Could not read error details');
+            }
+            
+            const failureComment = `## 🤖 AI Workflow Review
+
+❌ **Status:** Review failed
+
+${errorMessage}
+
+**Troubleshooting:**
+- Check that the n8n webhook URL is accessible
+- Verify the Anthropic API key is valid
+- Ensure workflow files are valid JSON
+- Review the [workflow run logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+You can manually trigger the review again from the Actions tab.`;
+            
+            if (commentId > 0) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: commentId,
+                body: failureComment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr_number,
+                body: failureComment
+              });
+            }
+            
+            // Add failed label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr_number,
+              labels: ['🚨 review-failed']
+            });
+
+  # Optional: Create a deployment preview link
+  preview:
+    name: Generate Preview Link
+    runs-on: ubuntu-latest
+    needs: ai-review
+    if: success()
+    steps:
+      - name: Comment preview link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = context.payload.pull_request?.number;
+            
+            if (pr_number) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr_number,
+                body: `## 🔗 n8n Workflow Preview
+
+After merging this PR, the workflows will be available in your n8n instance at:
+
+\`\`\`
+${{ secrets.N8N_BASE_URL }}/workflows
+\`\`\`
+
+**Next Steps:**
+1. Review the AI feedback above
+2. Address any concerns or suggestions
+3. Once approved, merge to trigger automatic deployment
+4. Verify workflows in n8n after deployment`
+              });
+            }

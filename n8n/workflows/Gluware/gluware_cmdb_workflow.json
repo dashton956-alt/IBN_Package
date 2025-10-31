@@ -1,0 +1,318 @@
+{
+  "name": "Gluware - CMDB API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "ciId",
+              "value": "={{ $json.ciId || '' }}"
+            },
+            {
+              "name": "ciType",
+              "value": "={{ $json.ciType || '' }}"
+            },
+            {
+              "name": "search",
+              "value": "={{ $json.search || '' }}"
+            },
+            {
+              "name": "attributes",
+              "value": "={{ $json.attributes || '' }}"
+            },
+            {
+              "name": "relationships",
+              "value": "={{ $json.relationships || 'false' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Configuration Management Database parameters:\n- method: HTTP method (GET, POST, PUT, DELETE)\n- ciId: Configuration Item ID\n- ciType: CI type filter (device, interface, service, application, etc.)\n- search: Search query string\n- attributes: Comma-separated list of attributes to return\n- relationships: Include CI relationships (true/false)\n- body: JSON body for POST/PUT operations"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build CMDB query string\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.ciType) queryParts.push(`ciType=${encodeURIComponent(params.ciType)}`);\nif (params.search) queryParts.push(`search=${encodeURIComponent(params.search)}`);\nif (params.attributes) queryParts.push(`attributes=${encodeURIComponent(params.attributes)}`);\nif (params.relationships) queryParts.push(`relationships=${params.relationships}`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200],
+      "notes": "Constructs CMDB query parameters"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "notes": "Routes based on operation type"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/cmdb{{ $('Build Query String').item.json.ciId ? '/' + $('Build Query String').item.json.ciId : '' }}{{ $('Build Query String').item.json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-cmdb",
+      "name": "GET CMDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "notes": "Retrieves Configuration Items:\n- All CIs or specific by ID\n- Filter by type and search query\n- Select specific attributes\n- Include relationship data"
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/cmdb{{ $('Set Input Parameters').item.json.ciId ? '/' + $('Set Input Parameters').item.json.ciId : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-post-put-delete",
+      "name": "POST/PUT/DELETE CMDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 400],
+      "notes": "CMDB operations:\n- POST: Create new CI\n- PUT: Update CI attributes or relationships\n- DELETE: Remove CI from database"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful CMDB response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  // Calculate CI statistics if available\n  let stats = null;\n  if (Array.isArray(data)) {\n    stats = {\n      totalCIs: data.length,\n      byType: data.reduce((acc, ci) => {\n        const type = ci.ciType || 'unknown';\n        acc[type] = (acc[type] || 0) + 1;\n        return acc;\n      }, {})\n    };\n  }\n  \n  return {\n    json: {\n      success: true,\n      method: params.method,\n      statusCode: data.statusCode || 200,\n      ciId: params.ciId || null,\n      filters: {\n        ciType: params.ciType || null,\n        search: params.search || null,\n        attributes: params.attributes || null,\n        includeRelationships: params.relationships === 'true'\n      },\n      statistics: stats,\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'cmdb'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "notes": "Formats CMDB response with CI type breakdown and statistics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: params.method || 'GET',\n    ciId: params.ciId || null,\n    error: {\n      message: error.message || 'CMDB operation failed',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'cmdb'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500],
+      "notes": "Formats error with operation context"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate CMDB parameters\nconst params = $input.item.json;\nconst errors = [];\nconst validCITypes = ['device', 'interface', 'service', 'application', 'server', 'database', 'network', 'storage'];\n\nif (!['GET', 'POST', 'PUT', 'DELETE'].includes(params.method.toUpperCase())) {\n  errors.push('Invalid HTTP method');\n}\n\nif (['PUT', 'DELETE'].includes(params.method.toUpperCase()) && !params.ciId) {\n  errors.push('ciId is required for PUT and DELETE operations');\n}\n\nif (params.ciType && !validCITypes.includes(params.ciType.toLowerCase())) {\n  errors.push(`Invalid CI type. Valid types: ${validCITypes.join(', ')}`);\n}\n\nif (params.relationships && !['true', 'false'].includes(params.relationships.toLowerCase())) {\n  errors.push('relationships must be true or false');\n}\n\nif (['POST', 'PUT'].includes(params.method.toUpperCase())) {\n  try {\n    const body = JSON.parse(params.body);\n    if (params.method === 'POST') {\n      if (!body.ciType) {\n        errors.push('ciType is required in body for POST operation');\n      }\n      if (!body.name) {\n        errors.push('name is required in body for POST operation');\n      }\n    }\n  } catch (e) {\n    errors.push('Invalid JSON body');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500],
+      "notes": "Validates CI types, required fields, and relationships flag"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET CMDB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT/DELETE CMDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET CMDB": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT/DELETE CMDB": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-cmdb-workflow"
+  },
+  "id": "gluware-cmdb-001",
+  "versionId": "1.0.0"
+}

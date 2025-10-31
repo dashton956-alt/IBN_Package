@@ -1,0 +1,97 @@
+{
+  "name": "aichatops-prototype",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "aichatops",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "responseCode": 200
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "={{$env.N8N_LOCALAI_URL}}",
+        "options": {},
+        "jsonParameters": true,
+        "bodyParametersJson": "={\"input\": $json.body.question }"
+      },
+      "name": "LocalAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 260]
+    },
+    {
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{$env.N8N_NETBOX_URL}}/api/dcim/devices/?limit=5",
+        "options": {},
+        "headerParametersJson": "={\"Authorization\": \"Token {{$env.N8N_NETBOX_TOKEN}}\"}"
+      },
+      "name": "NetBox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 440]
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ json: { ai: $node[\"LocalAI\"].json, devices: $node[\"NetBox\"].json } }];"
+      },
+      "name": "Aggregator",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 360]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "LocalAI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NetBox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LocalAI": {
+      "main": [
+        [
+          {
+            "node": "Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox": {
+      "main": [
+        [
+          {
+            "node": "Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregator": {
+      "main": []
+    }
+  }
+}

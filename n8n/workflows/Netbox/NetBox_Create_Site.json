@@ -1,0 +1,251 @@
+{
+  "name": "NetBox_Create_Site",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "schema": [
+            {
+              "name": "site_name",
+              "type": "string",
+              "displayName": "Site Name",
+              "required": true,
+              "description": "Name of the site to create"
+            },
+            {
+              "name": "site_slug",
+              "type": "string",
+              "displayName": "Site Slug",
+              "required": false,
+              "description": "URL-friendly slug (auto-generated from name if not provided)"
+            },
+            {
+              "name": "status",
+              "type": "string",
+              "displayName": "Status",
+              "required": false,
+              "description": "Site status (active, planned, retired, etc.) - defaults to active"
+            },
+            {
+              "name": "facility",
+              "type": "string",
+              "displayName": "Facility",
+              "required": false,
+              "description": "Facility name or code"
+            },
+            {
+              "name": "description",
+              "type": "string",
+              "displayName": "Description",
+              "required": false,
+              "description": "Site description"
+            }
+          ]
+        }
+      },
+      "id": "trigger-create-site",
+      "typeVersion": 1.1,
+      "name": "When_Called_From_Another_Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Auto-generate slug if not provided\nconst siteName = $input.item.json.site_name;\nconst siteSlug = $input.item.json.site_slug || siteName.toLowerCase()\n  .replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-|-$/g, '');\n\nreturn {\n  ...($input.item.json),\n  site_slug: siteSlug\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        340
+      ],
+      "id": "prepare-site-data",
+      "name": "Prepare_Site_Data"
+    },
+    {
+      "parameters": {
+        "url": "=http://172.27.0.1:8443/api/dcim/sites/?slug={{ encodeURIComponent($json.site_slug) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "check-site-exists",
+      "name": "Check_Site_Exists",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        680,
+        340
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "site-count-check",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        340
+      ],
+      "id": "if-site-not-exists",
+      "name": "If_Site_Not_Exists"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.27.0.1:8443/api/dcim/sites/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{ $('Prepare_Site_Data').item.json.site_name }}\",\n  \"slug\": \"{{ $('Prepare_Site_Data').item.json.site_slug }}\",\n  \"status\": \"{{ $('Prepare_Site_Data').item.json.status || 'active' }}\"\n  {{ $('Prepare_Site_Data').item.json.facility ? ',\"facility\": \"' + $('Prepare_Site_Data').item.json.facility + '\"' : '' }}\n  {{ $('Prepare_Site_Data').item.json.description ? ',\"description\": \"' + $('Prepare_Site_Data').item.json.description + '\"' : '' }}\n}",
+        "options": {}
+      },
+      "id": "create-site",
+      "name": "Create_Site",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1120,
+        240
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: true,\n  action: 'created',\n  site: $input.item.json\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        240
+      ],
+      "id": "format-success-response",
+      "name": "Format_Success_Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: false,\n  action: 'already_exists',\n  message: `Site '${$('Prepare_Site_Data').item.json.site_name}' already exists`,\n  existing_site: $input.item.json.results[0]\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        440
+      ],
+      "id": "format-exists-response",
+      "name": "Format_Already_Exists_Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When_Called_From_Another_Workflow": {
+      "main": [
+        [
+          {
+            "node": "Prepare_Site_Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare_Site_Data": {
+      "main": [
+        [
+          {
+            "node": "Check_Site_Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check_Site_Exists": {
+      "main": [
+        [
+          {
+            "node": "If_Site_Not_Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Site_Not_Exists": {
+      "main": [
+        [
+          {
+            "node": "Create_Site",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format_Already_Exists_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create_Site": {
+      "main": [
+        [
+          {
+            "node": "Format_Success_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "netbox-create-site-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "netbox-create-site",
+  "tags": []
+}

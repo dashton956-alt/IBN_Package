@@ -1,0 +1,322 @@
+{
+  "name": "Gluware - Config Drift API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "driftId",
+              "value": "={{ $json.driftId || '' }}"
+            },
+            {
+              "name": "deviceId",
+              "value": "={{ $json.deviceId || '' }}"
+            },
+            {
+              "name": "severity",
+              "value": "={{ $json.severity || '' }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.status || '' }}"
+            },
+            {
+              "name": "startDate",
+              "value": "={{ $json.startDate || '' }}"
+            },
+            {
+              "name": "endDate",
+              "value": "={{ $json.endDate || '' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Configuration drift detection parameters:\n- method: HTTP method (GET, POST, PUT)\n- driftId: Specific drift record ID\n- deviceId: Filter by device\n- severity: Filter by severity (critical, high, medium, low, info)\n- status: Filter by status (detected, acknowledged, resolved, ignored)\n- startDate: Date range start (ISO 8601)\n- endDate: Date range end\n- body: JSON body for POST/PUT (drift remediation, acknowledgment)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build config drift query string\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.deviceId) queryParts.push(`deviceId=${encodeURIComponent(params.deviceId)}`);\nif (params.severity) queryParts.push(`severity=${encodeURIComponent(params.severity)}`);\nif (params.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);\nif (params.startDate) queryParts.push(`startDate=${encodeURIComponent(params.startDate)}`);\nif (params.endDate) queryParts.push(`endDate=${encodeURIComponent(params.endDate)}`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200],
+      "notes": "Constructs drift query parameters"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "notes": "Routes based on operation type"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/config-drift{{ $('Build Query String').item.json.driftId ? '/' + $('Build Query String').item.json.driftId : '' }}{{ $('Build Query String').item.json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-drift",
+      "name": "GET Config Drift",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "notes": "Retrieves configuration drift information:\n- All drifts or specific by ID\n- Filter by device, severity, status, date range\n- Returns drift details and differences"
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/config-drift{{ $('Set Input Parameters').item.json.driftId ? '/' + $('Set Input Parameters').item.json.driftId : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-post-put",
+      "name": "POST/PUT Config Drift",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 400],
+      "notes": "Drift management operations:\n- POST: Trigger drift detection scan\n- PUT: Update drift status (acknowledge, resolve, ignore)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful drift response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  // Calculate drift statistics if available\n  let stats = null;\n  if (Array.isArray(data)) {\n    stats = {\n      totalDrifts: data.length,\n      bySeverity: data.reduce((acc, drift) => {\n        const severity = drift.severity || 'unknown';\n        acc[severity] = (acc[severity] || 0) + 1;\n        return acc;\n      }, {}),\n      byStatus: data.reduce((acc, drift) => {\n        const status = drift.status || 'unknown';\n        acc[status] = (acc[status] || 0) + 1;\n        return acc;\n      }, {})\n    };\n  }\n  \n  return {\n    json: {\n      success: true,\n      method: params.method,\n      statusCode: data.statusCode || 200,\n      driftId: params.driftId || null,\n      filters: {\n        deviceId: params.deviceId || null,\n        severity: params.severity || null,\n        status: params.status || null,\n        startDate: params.startDate || null,\n        endDate: params.endDate || null\n      },\n      statistics: stats,\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'config-drift'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "notes": "Formats drift response with statistics and severity breakdown"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: params.method || 'GET',\n    driftId: params.driftId || null,\n    error: {\n      message: error.message || 'Config drift operation failed',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'config-drift'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500],
+      "notes": "Formats error with operation context"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate config drift parameters\nconst params = $input.item.json;\nconst errors = [];\nconst validSeverities = ['critical', 'high', 'medium', 'low', 'info'];\nconst validStatuses = ['detected', 'acknowledged', 'resolved', 'ignored'];\n\nif (!['GET', 'POST', 'PUT'].includes(params.method.toUpperCase())) {\n  errors.push('Invalid HTTP method. Must be GET, POST, or PUT');\n}\n\nif (params.method.toUpperCase() === 'PUT' && !params.driftId) {\n  errors.push('driftId is required for PUT operations');\n}\n\nif (params.severity && !validSeverities.includes(params.severity.toLowerCase())) {\n  errors.push(`Invalid severity. Must be one of: ${validSeverities.join(', ')}`);\n}\n\nif (params.status && !validStatuses.includes(params.status.toLowerCase())) {\n  errors.push(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);\n}\n\n// Validate date range\nif (params.startDate && params.endDate) {\n  const start = new Date(params.startDate);\n  const end = new Date(params.endDate);\n  \n  if (isNaN(start.getTime())) {\n    errors.push('Invalid startDate format. Use ISO 8601 format.');\n  }\n  if (isNaN(end.getTime())) {\n    errors.push('Invalid endDate format. Use ISO 8601 format.');\n  }\n  if (start > end) {\n    errors.push('startDate cannot be after endDate');\n  }\n}\n\nif (['POST', 'PUT'].includes(params.method.toUpperCase())) {\n  try {\n    const body = JSON.parse(params.body);\n    if (params.method === 'POST' && !body.deviceId && !body.scanAll) {\n      errors.push('Either deviceId or scanAll flag is required for POST operation');\n    }\n    if (params.method === 'PUT' && !body.status) {\n      errors.push('status is required in body for PUT operation');\n    }\n  } catch (e) {\n    errors.push('Invalid JSON body');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500],
+      "notes": "Validates severity, status, date ranges, and required fields"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET Config Drift",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT Config Drift",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Config Drift": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT Config Drift": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-config-drift-workflow"
+  },
+  "id": "gluware-config-drift-001",
+  "versionId": "1.0.0"
+}

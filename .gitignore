@@ -1,0 +1,387 @@
+# IBNaaS Project .gitignore
+# Generated: October 31, 2025
+
+# ============================================================================
+# SECRETS AND CREDENTIALS - NEVER COMMIT THESE!
+# ============================================================================
+
+# Environment files with secrets
+.env
+.env.*
+!.env.example
+*.env
+env/
+.envrc
+
+# Credential files
+*credentials*
+*password*
+*secret*
+device-credentials.txt
+.git-credential-vault.sh
+
+# SSH Keys and Certificates
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+*.pub
+.ssh/
+.tls/
+
+# API Keys and Tokens
+*token*
+*api_key*
+*apikey*
+
+# Vault and HashiCorp
+vault/
+.vault-token
+vault.log
+
+# ============================================================================
+# DOCKER AND CONTAINERS
+# ============================================================================
+
+# Docker volumes and data
+**/data/
+**/volumes/
+docker-compose.override.yml
+
+# Container logs
+*.log
+logs/
+*.log.*
+
+# ============================================================================
+# PYTHON
+# ============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+pybatfish-env/
+batfish/pybatfish-env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv
+.python-version
+
+# ============================================================================
+# NODE.JS / N8N
+# ============================================================================
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# n8n specific
+n8n/data/
+.n8n/
+
+# ============================================================================
+# DATABASES
+# ============================================================================
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+
+# PostgreSQL
+*.sql
+*.dump
+
+# Redis
+dump.rdb
+*.rdb
+
+# Database backups
+*.backup
+*.bak
+
+# ============================================================================
+# MONITORING AND LOGS
+# ============================================================================
+
+# Grafana
+Monitoring/grafana/data/
+
+# Prometheus
+Monitoring/prometheus/data/
+
+# General logs
+*.log
+logs/
+log/
+
+# ============================================================================
+# NETWORK LAB AND CONTAINERLAB
+# ============================================================================
+
+# Containerlab generated files
+intent-lab/clab-*/
+!intent-lab/clab-clos-lab/
+intent-lab/clab-clos-lab/*/flash/
+intent-lab/clab-clos-lab/*/logs/
+intent-lab/clab-clos-lab/.tls/
+
+# VRNetlab
+intent-lab/vrnetlab/.env
+intent-lab/vrnetlab/*/*.qcow2
+intent-lab/vrnetlab/*/*.vmdk
+intent-lab/vrnetlab/*/*.iso
+
+# ============================================================================
+# LLM AND AI PLATFORMS (if re-added)
+# ============================================================================
+
+# Open-WebUI
+open-webui/
+Localai/
+anythingllm/
+anytingllm/
+
+# Model files
+*.gguf
+*.bin
+*.safetensors
+models/
+*.onnx
+
+# Vector databases
+chroma/
+vector_db/
+*.vectordb
+
+# Cache directories
+cache/
+.cache/
+embeddings/
+
+# ============================================================================
+# IDE AND EDITOR FILES
+# ============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# OPERATING SYSTEM FILES
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================================
+# BACKUP AND TEMPORARY FILES
+# ============================================================================
+
+# Backups
+*.backup
+*.bak
+*.old
+*.orig
+*~
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+*.swp
+*.swo
+
+# ============================================================================
+# NETBOX SPECIFIC
+# ============================================================================
+
+# NetBox media and uploads
+netbox-docker/netbox-media-files/
+netbox-docker/netbox-static-files/
+netbox-docker/netbox-reports-files/
+netbox-docker/netbox-scripts-files/
+
+# NetBox environment files
+netbox-docker/env/*.env
+!netbox-docker/env/*.env.example
+
+# NetBox Redis dumps
+netbox-docker/redis-data/
+
+# NetBox PostgreSQL data
+netbox-docker/postgres-data/
+
+# ============================================================================
+# GLUWARE
+# ============================================================================
+
+gluware/data/
+gluware/logs/
+gluware/*.log
+
+# ============================================================================
+# STACKSTORM (if re-added)
+# ============================================================================
+
+stackstorm/
+stackstorm-old/
+st2-docker/
+packs.dev/
+
+# ============================================================================
+# MISCELLANEOUS
+# ============================================================================
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Large files
+*.qcow2
+*.vmdk
+*.vdi
+*.vhd
+
+# Network diagrams (generated)
+*.png
+*.jpg
+*.jpeg
+*.gif
+!docs/architecture/*.png
+!docs/architecture/*.jpg
+
+# Tokens for diagram generation
+*.token
+
+# Documentation builds
+_build/
+site/
+
+# Kubernetes secrets
+secrets/
+k8s/secrets/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+*.retry
+*.vault
+
+# Test outputs
+test-results/
+test-output/
+
+# Keep these example/template files
+!.env.example
+!.env.template
+!config.example.*
+!docker-compose.example.yml

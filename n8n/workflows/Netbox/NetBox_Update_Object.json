@@ -1,0 +1,237 @@
+{
+  "name": "NetBox_Update_Object",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "schema": [
+            {
+              "name": "object_type",
+              "type": "string",
+              "displayName": "Object Type",
+              "required": true,
+              "description": "NetBox object type (e.g., dcim/devices, ipam/ip-addresses, dcim/sites)"
+            },
+            {
+              "name": "object_id",
+              "type": "number",
+              "displayName": "Object ID",
+              "required": true,
+              "description": "ID of the object to update"
+            },
+            {
+              "name": "update_fields",
+              "type": "json",
+              "displayName": "Update Fields",
+              "required": true,
+              "description": "JSON object with fields to update"
+            }
+          ]
+        }
+      },
+      "id": "trigger-update-object",
+      "typeVersion": 1.1,
+      "name": "When_Called_From_Another_Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://172.27.0.1:8443/api/{{ $json.object_type }}/{{ $json.object_id }}/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-current-object",
+      "name": "Get_Current_Object",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        460,
+        340
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "object-exists-check",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        340
+      ],
+      "id": "if-object-exists",
+      "name": "If_Object_Exists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const currentObject = $input.item.json;\nconst updateFields = JSON.parse($('When_Called_From_Another_Workflow').item.json.update_fields);\n\n// Merge current object with update fields\nconst updatedObject = { ...currentObject, ...updateFields };\n\nreturn {\n  current: currentObject,\n  updated: updatedObject,\n  changes: updateFields\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        240
+      ],
+      "id": "prepare-update",
+      "name": "Prepare_Update"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://172.27.0.1:8443/api/{{ $('When_Called_From_Another_Workflow').item.json.object_type }}/{{ $('When_Called_From_Another_Workflow').item.json.object_id }}/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.changes) }}",
+        "options": {}
+      },
+      "id": "patch-object",
+      "name": "PATCH_Object",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1120,
+        240
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zUcs6TpKWgVP6mF0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: true,\n  action: 'updated',\n  object_type: $('When_Called_From_Another_Workflow').item.json.object_type,\n  object_id: $('When_Called_From_Another_Workflow').item.json.object_id,\n  previous: $('Prepare_Update').item.json.current,\n  updated: $input.item.json\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        240
+      ],
+      "id": "format-success-response",
+      "name": "Format_Success_Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: false,\n  action: 'not_found',\n  message: `Object ${$('When_Called_From_Another_Workflow').item.json.object_type}/${$('When_Called_From_Another_Workflow').item.json.object_id} not found`,\n  object_type: $('When_Called_From_Another_Workflow').item.json.object_type,\n  object_id: $('When_Called_From_Another_Workflow').item.json.object_id\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        440
+      ],
+      "id": "format-not-found-response",
+      "name": "Format_Not_Found_Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When_Called_From_Another_Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get_Current_Object",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Current_Object": {
+      "main": [
+        [
+          {
+            "node": "If_Object_Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Object_Exists": {
+      "main": [
+        [
+          {
+            "node": "Prepare_Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format_Not_Found_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare_Update": {
+      "main": [
+        [
+          {
+            "node": "PATCH_Object",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PATCH_Object": {
+      "main": [
+        [
+          {
+            "node": "Format_Success_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "netbox-update-object-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e6ca7ddf2f77d2ef98800e4412f09f960dcc9053dea5ab0e0a442e71828fa9"
+  },
+  "id": "netbox-update-object",
+  "tags": []
+}

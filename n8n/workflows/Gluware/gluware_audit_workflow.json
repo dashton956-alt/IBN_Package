@@ -1,0 +1,234 @@
+{
+  "name": "Gluware - Audit API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "auditId",
+              "value": "={{ $json.auditId || '' }}"
+            },
+            {
+              "name": "startDate",
+              "value": "={{ $json.startDate || '' }}"
+            },
+            {
+              "name": "endDate",
+              "value": "={{ $json.endDate || '' }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId || '' }}"
+            },
+            {
+              "name": "action",
+              "value": "={{ $json.action || '' }}"
+            },
+            {
+              "name": "resource",
+              "value": "={{ $json.resource || '' }}"
+            },
+            {
+              "name": "limit",
+              "value": "={{ $json.limit || '100' }}"
+            },
+            {
+              "name": "offset",
+              "value": "={{ $json.offset || '0' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Audit log query parameters:\n- method: HTTP method (typically GET)\n- auditId: Specific audit entry ID\n- startDate: Filter by date range (ISO 8601)\n- endDate: End of date range\n- userId: Filter by user\n- action: Filter by action type (CREATE, UPDATE, DELETE, etc.)\n- resource: Filter by resource type\n- limit: Result pagination limit\n- offset: Result pagination offset"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build query string from parameters\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.startDate) queryParts.push(`startDate=${encodeURIComponent(params.startDate)}`);\nif (params.endDate) queryParts.push(`endDate=${encodeURIComponent(params.endDate)}`);\nif (params.userId) queryParts.push(`userId=${encodeURIComponent(params.userId)}`);\nif (params.action) queryParts.push(`action=${encodeURIComponent(params.action)}`);\nif (params.resource) queryParts.push(`resource=${encodeURIComponent(params.resource)}`);\nif (params.limit) queryParts.push(`limit=${params.limit}`);\nif (params.offset) queryParts.push(`offset=${params.offset}`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Constructs query string from filter parameters"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/audit{{ $json.auditId ? '/' + $json.auditId : '' }}{{ $json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-audit",
+      "name": "GET Audit Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "notes": "Retrieves audit log entries:\n- Single entry by auditId\n- Filtered list by date, user, action, resource\n- Paginated results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful audit response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  return {\n    json: {\n      success: true,\n      method: 'GET',\n      statusCode: data.statusCode || 200,\n      filters: {\n        startDate: params.startDate || null,\n        endDate: params.endDate || null,\n        userId: params.userId || null,\n        action: params.action || null,\n        resource: params.resource || null\n      },\n      pagination: {\n        limit: parseInt(params.limit) || 100,\n        offset: parseInt(params.offset) || 0,\n        total: data.total || (Array.isArray(data) ? data.length : 1)\n      },\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'audit'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "notes": "Formats audit response with filter and pagination metadata"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: params.method || 'GET',\n    error: {\n      message: error.message || 'Failed to retrieve audit logs',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null\n    },\n    filters: {\n      startDate: params.startDate || null,\n      endDate: params.endDate || null,\n      userId: params.userId || null,\n      action: params.action || null,\n      resource: params.resource || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'audit'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500],
+      "notes": "Formats error with context about failed query"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate audit query parameters\nconst params = $input.item.json;\nconst errors = [];\n\n// Validate method\nif (params.method && params.method.toUpperCase() !== 'GET') {\n  errors.push('Only GET method is supported for audit logs');\n}\n\n// Validate date range\nif (params.startDate && params.endDate) {\n  const start = new Date(params.startDate);\n  const end = new Date(params.endDate);\n  \n  if (isNaN(start.getTime())) {\n    errors.push('Invalid startDate format. Use ISO 8601 format.');\n  }\n  if (isNaN(end.getTime())) {\n    errors.push('Invalid endDate format. Use ISO 8601 format.');\n  }\n  if (start > end) {\n    errors.push('startDate cannot be after endDate');\n  }\n}\n\n// Validate pagination\nconst limit = parseInt(params.limit);\nconst offset = parseInt(params.offset);\n\nif (params.limit && (isNaN(limit) || limit < 1 || limit > 1000)) {\n  errors.push('Limit must be between 1 and 1000');\n}\n\nif (params.offset && (isNaN(offset) || offset < 0)) {\n  errors.push('Offset must be a non-negative integer');\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 480],
+      "notes": "Validates date formats, pagination parameters"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "GET Audit Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Audit Logs": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-audit-workflow"
+  },
+  "id": "gluware-audit-001",
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,318 @@
+{
+  "name": "Gluware - Policy API",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-start",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "method",
+              "value": "={{ $json.method || 'GET' }}"
+            },
+            {
+              "name": "policyId",
+              "value": "={{ $json.policyId || '' }}"
+            },
+            {
+              "name": "policyType",
+              "value": "={{ $json.policyType || '' }}"
+            },
+            {
+              "name": "scope",
+              "value": "={{ $json.scope || '' }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.status || '' }}"
+            },
+            {
+              "name": "validate",
+              "value": "={{ $json.validate || 'false' }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body || '{}' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300],
+      "notes": "Network policy management parameters:\n- method: HTTP method (GET, POST, PUT, DELETE)\n- policyId: Specific policy ID\n- policyType: Filter by type (security, qos, routing, access, compliance)\n- scope: Filter by scope (global, site, device)\n- status: Filter by status (active, inactive, draft, deprecated)\n- validate: Validate policy before applying (true/false)\n- body: JSON body for POST/PUT operations"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build policy query string\nconst params = $input.item.json;\nconst queryParts = [];\n\nif (params.policyType) queryParts.push(`policyType=${encodeURIComponent(params.policyType)}`);\nif (params.scope) queryParts.push(`scope=${encodeURIComponent(params.scope)}`);\nif (params.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);\nif (params.validate === 'true') queryParts.push(`validate=true`);\n\nconst queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';\n\nreturn [{\n  json: {\n    ...params,\n    queryString: queryString\n  }\n}];"
+      },
+      "id": "build-query",
+      "name": "Build Query String",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200],
+      "notes": "Constructs policy query parameters"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.method }}",
+              "rightValue": "GET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-method",
+      "name": "Check HTTP Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "notes": "Routes based on operation type"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.GLUWARE_API_URL }}/policy{{ $('Build Query String').item.json.policyId ? '/' + $('Build Query String').item.json.policyId : '' }}{{ $('Build Query String').item.json.queryString || '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "http-get-policy",
+      "name": "GET Policy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "notes": "Retrieves network policies:\n- All policies or specific by ID\n- Filter by type, scope, and status\n- Returns policy rules and configurations"
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Set Input Parameters').item.json.method }}",
+        "url": "={{ $env.GLUWARE_API_URL }}/policy{{ $('Set Input Parameters').item.json.policyId ? '/' + $('Set Input Parameters').item.json.policyId : '' }}{{ $('Set Input Parameters').item.json.validate === 'true' ? '?validate=true' : '' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gluwareApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GLUWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Set Input Parameters').item.json.body }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http-post-put-delete",
+      "name": "POST/PUT/DELETE Policy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 400],
+      "notes": "Policy management operations:\n- POST: Create new policy (with optional validation)\n- PUT: Update existing policy\n- DELETE: Remove policy"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format successful policy response\nconst inputData = $input.all();\nconst params = $('Set Input Parameters').item.json;\n\nconst output = inputData.map(item => {\n  const data = item.json;\n  \n  // Calculate policy statistics if available\n  let stats = null;\n  if (Array.isArray(data)) {\n    stats = {\n      totalPolicies: data.length,\n      byType: data.reduce((acc, policy) => {\n        const type = policy.policyType || 'unknown';\n        acc[type] = (acc[type] || 0) + 1;\n        return acc;\n      }, {}),\n      byStatus: data.reduce((acc, policy) => {\n        const status = policy.status || 'unknown';\n        acc[status] = (acc[status] || 0) + 1;\n        return acc;\n      }, {}),\n      byScope: data.reduce((acc, policy) => {\n        const scope = policy.scope || 'unknown';\n        acc[scope] = (acc[scope] || 0) + 1;\n        return acc;\n      }, {})\n    };\n  }\n  \n  return {\n    json: {\n      success: true,\n      method: params.method,\n      statusCode: data.statusCode || 200,\n      policyId: params.policyId || null,\n      validated: params.validate === 'true',\n      filters: {\n        policyType: params.policyType || null,\n        scope: params.scope || null,\n        status: params.status || null\n      },\n      statistics: stats,\n      data: data,\n      timestamp: new Date().toISOString(),\n      endpoint: 'policy'\n    }\n  };\n});\n\nreturn output;"
+      },
+      "id": "format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "notes": "Formats policy response with type, status, and scope statistics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format error response\nconst error = $input.all()[0].json;\nconst params = $('Set Input Parameters').item.json;\n\nreturn [{\n  json: {\n    success: false,\n    method: params.method || 'GET',\n    policyId: params.policyId || null,\n    validated: params.validate === 'true',\n    error: {\n      message: error.message || 'Policy operation failed',\n      statusCode: error.statusCode || 500,\n      details: error.error || error.description || null,\n      validationErrors: error.validationErrors || null\n    },\n    timestamp: new Date().toISOString(),\n    endpoint: 'policy'\n  }\n}];"
+      },
+      "id": "format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500],
+      "notes": "Formats error with validation details if applicable"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate policy parameters\nconst params = $input.item.json;\nconst errors = [];\nconst validPolicyTypes = ['security', 'qos', 'routing', 'access', 'compliance', 'backup', 'monitoring'];\nconst validScopes = ['global', 'site', 'device', 'interface'];\nconst validStatuses = ['active', 'inactive', 'draft', 'deprecated', 'scheduled'];\n\nif (!['GET', 'POST', 'PUT', 'DELETE'].includes(params.method.toUpperCase())) {\n  errors.push('Invalid HTTP method');\n}\n\nif (['PUT', 'DELETE'].includes(params.method.toUpperCase()) && !params.policyId) {\n  errors.push('policyId is required for PUT and DELETE operations');\n}\n\nif (params.policyType && !validPolicyTypes.includes(params.policyType.toLowerCase())) {\n  errors.push(`Invalid policy type. Valid types: ${validPolicyTypes.join(', ')}`);\n}\n\nif (params.scope && !validScopes.includes(params.scope.toLowerCase())) {\n  errors.push(`Invalid scope. Valid scopes: ${validScopes.join(', ')}`);\n}\n\nif (params.status && !validStatuses.includes(params.status.toLowerCase())) {\n  errors.push(`Invalid status. Valid statuses: ${validStatuses.join(', ')}`);\n}\n\nif (params.validate && !['true', 'false'].includes(params.validate.toLowerCase())) {\n  errors.push('validate must be true or false');\n}\n\nif (['POST', 'PUT'].includes(params.method.toUpperCase())) {\n  try {\n    const body = JSON.parse(params.body);\n    if (params.method === 'POST') {\n      if (!body.name) {\n        errors.push('name is required in body for POST operation');\n      }\n      if (!body.policyType) {\n        errors.push('policyType is required in body for POST operation');\n      }\n      if (!body.scope) {\n        errors.push('scope is required in body for POST operation');\n      }\n      if (!body.rules || !Array.isArray(body.rules) || body.rules.length === 0) {\n        errors.push('rules array is required and must not be empty for POST operation');\n      }\n    }\n  } catch (e) {\n    errors.push('Invalid JSON body');\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(`Validation failed: ${errors.join(', ')}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500],
+      "notes": "Validates policy types, scopes, statuses, and required fields"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build Query String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Query String": {
+      "main": [
+        [
+          {
+            "node": "Check HTTP Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check HTTP Method": {
+      "main": [
+        [
+          {
+            "node": "GET Policy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST/PUT/DELETE Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Policy": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST/PUT/DELETE Policy": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "gluware"
+    },
+    {
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "id": "2",
+      "name": "api"
+    }
+  ],
+  "meta": {
+    "instanceId": "gluware-policy-workflow"
+  },
+  "id": "gluware-policy-001",
+  "versionId": "1.0.0"
+}
