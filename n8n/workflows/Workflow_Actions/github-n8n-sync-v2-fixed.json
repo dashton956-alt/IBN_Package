@@ -72,9 +72,9 @@
       "typeVersion": 1,
       "position": [900, 200],
       "credentials": {
-        "githubApi": {
-          "id": "YOUR_GITHUB_API_ID",
-          "name": "GitHub API"
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
         }
       }
     },

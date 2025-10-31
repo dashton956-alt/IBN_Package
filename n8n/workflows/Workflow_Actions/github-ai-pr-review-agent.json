@@ -43,9 +43,9 @@
       "typeVersion": 1,
       "position": [680, 400],
       "credentials": {
-        "githubApi": {
-          "id": "YOUR_GITHUB_API_ID",
-          "name": "GitHub API"
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
         }
       }
     },
@@ -133,9 +133,9 @@
       "typeVersion": 1,
       "position": [2000, 300],
       "credentials": {
-        "githubApi": {
-          "id": "YOUR_GITHUB_API_ID",
-          "name": "GitHub API"
+        "githubOAuth2Api": {
+          "id": "YOUR_GITHUB_OAUTH_ID",
+          "name": "GitHub OAuth2"
         }
       }
     },
